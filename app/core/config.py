@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_algorithm: str
     jwt_expiration_minutes: int
+    refresh_token_expire_days: int
+    allowed_origins: list[str]
+    current_terms_version: str
 
 
 settings = Settings()  # type: ignore[call-arg]
