@@ -24,7 +24,7 @@ async def register(db: AsyncSession, data: RegisterRequest) -> Usuario:
     usuario = Usuario(
         nome=data.nome,
         email=data.email,
-        senha_hash=security.hash_password(data.senha),
+        senha_hash=security.hash_password(data.password),
         role=data.role,
         telefone=data.telefone,
         accepted_terms_at=datetime.now(timezone.utc),
@@ -49,7 +49,7 @@ async def login(
 
     # Same message whether email doesn't exist or password is wrong —
     # nunca revelar qual o valor que estava incorreto no login.
-    if usuario is None or not security.verify_password(data.senha, usuario.senha_hash):
+    if usuario is None or not security.verify_password(data.password, usuario.senha_hash):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
     access_token = security.create_access_token(

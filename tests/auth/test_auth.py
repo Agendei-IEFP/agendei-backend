@@ -9,7 +9,7 @@ LOGOUT_URL = "/api/v1/auth/logout"
 VALID_USER = {
     "nome": "Test User",
     "email": "test@example.com",
-    "senha": "password123",
+    "password": "password123",
     "role": "cliente",
     "accepted_terms": True,
 }
@@ -28,7 +28,7 @@ async def test_register_success(client: AsyncClient):
     assert body["nome"] == VALID_USER["nome"]
     assert body["role"] == VALID_USER["role"]
     assert "id" in body
-    assert "senha" not in body
+    assert "password" not in body
     assert "senha_hash" not in body
 
 
@@ -40,7 +40,7 @@ async def test_register_duplicate_email(client: AsyncClient):
 
 
 async def test_register_short_password(client: AsyncClient):
-    data = {**VALID_USER, "senha": "short"}
+    data = {**VALID_USER, "password": "short"}
     response = await client.post(REGISTER_URL, json=data)
     assert response.status_code == 422
 
@@ -60,7 +60,7 @@ async def test_login_success(client: AsyncClient):
     await client.post(REGISTER_URL, json=VALID_USER)
     response = await client.post(LOGIN_URL, json={
         "email": VALID_USER["email"],
-        "senha": VALID_USER["senha"],
+        "password": VALID_USER["password"],
     })
     assert response.status_code == 200
     body = response.json()
@@ -74,7 +74,7 @@ async def test_login_wrong_password(client: AsyncClient):
     await client.post(REGISTER_URL, json=VALID_USER)
     response = await client.post(LOGIN_URL, json={
         "email": VALID_USER["email"],
-        "senha": "wrongpassword",
+        "password": "wrongpassword",
     })
     assert response.status_code == 401
 
@@ -82,7 +82,7 @@ async def test_login_wrong_password(client: AsyncClient):
 async def test_login_unknown_email(client: AsyncClient):
     response = await client.post(LOGIN_URL, json={
         "email": "nobody@example.com",
-        "senha": "password123",
+        "password": "password123",
     })
     assert response.status_code == 401
 
@@ -96,7 +96,7 @@ async def test_refresh_success(client: AsyncClient):
     await client.post(REGISTER_URL, json=VALID_USER)
     await client.post(LOGIN_URL, json={
         "email": VALID_USER["email"],
-        "senha": VALID_USER["senha"],
+        "password": VALID_USER["password"],
     })
     response = await client.post(REFRESH_URL)
     assert response.status_code == 200
@@ -118,7 +118,7 @@ async def test_logout(client: AsyncClient):
     await client.post(REGISTER_URL, json=VALID_USER)
     await client.post(LOGIN_URL, json={
         "email": VALID_USER["email"],
-        "senha": VALID_USER["senha"],
+        "password": VALID_USER["password"],
     })
     response = await client.post(LOGOUT_URL)
     assert response.status_code == 204
