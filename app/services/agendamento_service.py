@@ -283,6 +283,7 @@ async def atualizar_status(
     ag.status = data.status
     if data.status == StatusEnum.cancelado:
         ag.cancelado_por = usuario.id
+        ag.cancelado_motivo = data.motivo
 
     await db.commit()
     await db.refresh(ag)

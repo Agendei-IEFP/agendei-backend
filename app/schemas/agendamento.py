@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 from app.models.agendamento import StatusEnum
@@ -14,8 +16,8 @@ class AgendamentoCreate(BaseModel):
 
 
 class AgendamentoUpdate(BaseModel):
-    """Apenas o status pode ser alterado após criação."""
     status: StatusEnum
+    motivo: str | None = None
 
 
 class AgendamentoPublic(BaseModel):
