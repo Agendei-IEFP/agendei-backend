@@ -1,6 +1,6 @@
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
-from typing import Optional
 from datetime import time
+
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class HorarioTrabalhoCreate(BaseModel):
@@ -27,9 +27,9 @@ class HorarioTrabalhoCreate(BaseModel):
 
 
 class HorarioTrabalhoUpdate(BaseModel):
-    hora_inicio: Optional[time] = None
-    hora_fim: Optional[time] = None
-    is_active: Optional[bool] = None
+    hora_inicio: time | None = None
+    hora_fim: time | None = None
+    is_active: bool | None = None
 
 
 class HorarioTrabalhoPublic(BaseModel):

@@ -1,6 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
-from datetime import datetime
+
 from app.models.agendamento import StatusEnum
 
 
@@ -29,7 +28,8 @@ class AgendamentoPublic(BaseModel):
     data_hora_inicio: datetime
     data_hora_fim: datetime
     status: StatusEnum
-    cancelado_por: Optional[str]
+    cancelado_por: str | None
+    cancelado_motivo: str | None
     lembrete_enviado: bool
 
 

@@ -25,11 +25,11 @@ class ServicoCreate(BaseModel):
 
 
 class ServicoUpdate(BaseModel):
-    nome: Optional[str] = None
-    descricao: Optional[str] = None
-    preco: Optional[Decimal] = None
-    duracao_minutos: Optional[int] = None
-    is_active: Optional[bool] = None
+    nome: str | None = None
+    descricao: str | None = None
+    preco: Decimal | None = None
+    duracao_minutos: int | None = None
+    is_active: bool | None = None
 
 
 class ServicoPublic(BaseModel):
@@ -38,7 +38,7 @@ class ServicoPublic(BaseModel):
     id: str
     profissional_id: str
     nome: str
-    descricao: Optional[str]
+    descricao: str | None
     preco: Decimal
     duracao_minutos: int
     is_active: bool
