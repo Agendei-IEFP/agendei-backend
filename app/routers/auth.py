@@ -27,13 +27,18 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     )
 
 
-@router.post("/register", response_model=UsuarioPublic, status_code=201)
+@router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(
     data: RegisterRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    usuario = await auth_service.register(db, data)
-    return usuario
+    access_token, refresh_token, usuario = await auth_service.register(db, data)
+    _set_refresh_cookie(response, refresh_token)
+    return TokenResponse(
+        access_token=access_token,
+        user=UsuarioPublic.model_validate(usuario),
+    )
 
 
 @router.post("/login", response_model=TokenResponse)

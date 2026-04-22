@@ -24,10 +24,12 @@ async def test_register_success(client: AsyncClient):
     response = await client.post(REGISTER_URL, json=VALID_USER)
     assert response.status_code == 201
     body = response.json()
-    assert body["email"] == VALID_USER["email"]
-    assert body["nome"] == VALID_USER["nome"]
-    assert body["role"] == VALID_USER["role"]
-    assert "id" in body
+    assert "access_token" in body
+    assert body["token_type"] == "bearer"
+    assert body["user"]["email"] == VALID_USER["email"]
+    assert body["user"]["nome"] == VALID_USER["nome"]
+    assert body["user"]["role"] == VALID_USER["role"]
+    assert "id" in body["user"]
     assert "password" not in body
     assert "senha_hash" not in body
 

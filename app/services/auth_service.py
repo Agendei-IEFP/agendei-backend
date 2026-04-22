@@ -11,7 +11,7 @@ from app.models.usuario import Usuario
 from app.schemas.auth import LoginRequest, RegisterRequest
 
 
-async def register(db: AsyncSession, data: RegisterRequest) -> Usuario:
+async def register(db: AsyncSession, data: RegisterRequest) -> tuple[str, str, Usuario]:
     result = await db.execute(
         select(Usuario).where(
             Usuario.email == data.email,
@@ -33,7 +33,12 @@ async def register(db: AsyncSession, data: RegisterRequest) -> Usuario:
     db.add(usuario)
     await db.commit()
     await db.refresh(usuario)
-    return usuario
+
+    access_token = security.create_access_token(
+        {"sub": usuario.id, "role": usuario.role}
+    )
+    refresh_token = security.create_refresh_token({"sub": usuario.id})
+    return access_token, refresh_token, usuario
 
 
 async def login(
