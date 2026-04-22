@@ -1,7 +1,10 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from fastapi import HTTPException
+from datetime import datetime, timezone
 
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import hash_password
 from app.models.profissional import Profissional
 from app.models.usuario import Usuario, RoleEnum
 from app.schemas.profissional import ProfissionalCreate, ProfissionalUpdate
@@ -14,42 +17,28 @@ async def adicionar_profissional(
     data: ProfissionalCreate,
     admin: Usuario,
 ) -> Profissional:
-    """
-    Adiciona um profissional a uma loja.
-    Só o dono da loja pode fazer isso.
-    O usuário referenciado deve ter role=profissional.
-    """
     loja = await get_loja(db, loja_id)
 
     if loja.owner_id != admin.id:
         raise HTTPException(status_code=403, detail="Apenas o dono da loja pode adicionar profissionais")
 
-    # Verifica se o usuário existe e tem o papel correto
-    result = await db.execute(
-        select(Usuario).where(
-            Usuario.id == data.usuario_id,
-            Usuario.deleted_at.is_(None),
-        )
+    existing = await db.execute(
+        select(Usuario).where(Usuario.email == data.email, Usuario.deleted_at.is_(None))
     )
-    usuario = result.scalar_one_or_none()
-    if usuario is None:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    if usuario.role != RoleEnum.profissional:
-        raise HTTPException(status_code=422, detail="O usuário deve ter role=profissional")
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Email já cadastrado")
 
-    # Verifica se já está cadastrado nesta loja
-    ja_existe = await db.execute(
-        select(Profissional).where(
-            Profissional.usuario_id == data.usuario_id,
-            Profissional.loja_id == loja_id,
-            Profissional.deleted_at.is_(None),
-        )
+    usuario = Usuario(
+        nome=data.nome,
+        email=data.email,
+        senha_hash=hash_password(data.senha),
+        role=RoleEnum.profissional,
     )
-    if ja_existe.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=409, detail="Profissional já cadastrado nesta loja")
+    db.add(usuario)
+    await db.flush()
 
     profissional = Profissional(
-        usuario_id=data.usuario_id,
+        usuario_id=usuario.id,
         loja_id=loja_id,
         bio=data.bio,
         foto_url=data.foto_url,
@@ -100,8 +89,7 @@ async def atualizar_profissional(
     if loja.owner_id != admin.id:
         raise HTTPException(status_code=403, detail="Apenas o dono da loja pode editar profissionais")
 
-    campos = data.model_dump(exclude_unset=True)
-    for campo, valor in campos.items():
+    for campo, valor in data.model_dump(exclude_unset=True).items():
         setattr(profissional, campo, valor)
 
     await db.commit()
@@ -112,8 +100,6 @@ async def atualizar_profissional(
 async def remover_profissional(
     db: AsyncSession, profissional_id: str, admin: Usuario
 ) -> None:
-    from datetime import datetime, timezone
-
     profissional = await buscar_profissional(db, profissional_id)
     loja = await get_loja(db, profissional.loja_id)
 
