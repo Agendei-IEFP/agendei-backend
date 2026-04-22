@@ -280,6 +280,15 @@ async def atualizar_status(
                 detail="Clientes só podem cancelar agendamentos",
             )
 
+    # Só pode concluir após a data/hora de início ter passado
+    if data.status == StatusEnum.concluido:
+        agora = datetime.now(timezone.utc)
+        if ag.data_hora_inicio > agora:
+            raise HTTPException(
+                status_code=422,
+                detail="Só é possível concluir um agendamento após a data/hora de início",
+            )
+
     ag.status = data.status
     if data.status == StatusEnum.cancelado:
         ag.cancelado_por = usuario.id
