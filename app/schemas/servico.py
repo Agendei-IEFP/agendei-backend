@@ -1,19 +1,20 @@
-from pydantic import BaseModel, ConfigDict, field_validator
-from typing import Optional
+from datetime import datetime
 from decimal import Decimal
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class ServicoCreate(BaseModel):
     nome: str
-    descricao: Optional[str] = None
+    descricao: str | None = None
     preco: Decimal
     duracao_minutos: int
 
     @field_validator("duracao_minutos")
     @classmethod
-    def duracao_positiva(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("A duração deve ser maior que zero")
+    def duracao_minima(cls, v: int) -> int:
+        if v < 15:
+            raise ValueError("A duração mínima é de 15 minutos")
         return v
 
     @field_validator("preco")
@@ -42,3 +43,5 @@ class ServicoPublic(BaseModel):
     preco: Decimal
     duracao_minutos: int
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
