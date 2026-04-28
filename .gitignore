@@ -17,3 +17,6 @@ wheels/
 
 # Environment variables
 .env
+
+# Claude Code instructions
+CLAUDE.md
