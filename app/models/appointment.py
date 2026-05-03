@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.mixins import Base, TimestampMixin, ULIDMixin
 from app.models.user import User
 from app.models.professional import Professional
+from app.models.professional_store import ProfessionalStore
 from app.models.offering import Offering
 
 
@@ -22,6 +23,9 @@ class Appointment(Base, ULIDMixin, TimestampMixin):
 
     client_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"))
     professional_id: Mapped[str] = mapped_column(String(26), ForeignKey("professionals.id"))
+    professional_store_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("professional_stores.id")
+    )
     offering_id: Mapped[str] = mapped_column(String(26), ForeignKey("offerings.id"))
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -33,4 +37,5 @@ class Appointment(Base, ULIDMixin, TimestampMixin):
 
     client: Mapped[User] = relationship("User", foreign_keys=[client_id])
     professional: Mapped[Professional] = relationship("Professional")
+    professional_store: Mapped[ProfessionalStore] = relationship("ProfessionalStore")
     offering: Mapped[Offering] = relationship("Offering")
