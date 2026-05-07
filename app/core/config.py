@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int
     allowed_origins: list[str]
     current_terms_version: str
+    frontend_url: str
 
 
 settings = Settings()  # type: ignore[call-arg]

@@ -7,10 +7,11 @@ from app.models.appointment import StatusEnum
 
 class AppointmentCreate(BaseModel):
     """
-    Client picks professional, offering, and start time.
-    ends_at is calculated by the backend (starts_at + offering duration).
+    Client picks the professional-store binding, the offering, and a start time.
+    The owning professional is derived from professional_store_id; ends_at is
+    computed from the offering duration.
     """
-    professional_id: str
+    professional_store_id: str
     offering_id: str
     starts_at: datetime
 
@@ -26,6 +27,7 @@ class AppointmentPublic(BaseModel):
     id: str
     client_id: str
     professional_id: str
+    professional_store_id: str
     offering_id: str
     starts_at: datetime
     ends_at: datetime

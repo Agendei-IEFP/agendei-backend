@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.user import RoleEnum, User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
 async def get_current_user(
@@ -41,6 +42,25 @@ async def get_current_user(
         raise credentials_exception
 
     return user
+
+
+async def get_optional_user(
+    token: str | None = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    if token is None:
+        return None
+    try:
+        payload = security.decode_token(token)
+    except JWTError:
+        return None
+    user_id: str | None = payload.get("sub")
+    if not user_id:
+        return None
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.deleted_at.is_(None))
+    )
+    return result.scalar_one_or_none()
 
 
 def require_role(*roles: RoleEnum):

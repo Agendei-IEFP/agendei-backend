@@ -36,7 +36,7 @@ class WorkSchedulePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    professional_id: str
+    professional_store_id: str
     weekday: int
     start_time: time
     end_time: time

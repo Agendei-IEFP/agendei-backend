@@ -5,27 +5,52 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.offering import Offering
+from app.models.professional import Professional
+from app.models.professional_store import ProfessionalStore
+from app.models.store import Store
 from app.models.user import User
 from app.schemas.offering import OfferingCreate, OfferingUpdate
-from app.services.professional_service import get_professional
+from app.services.professional_service import get_professional_store
 
 
-async def _verify_owner(db: AsyncSession, professional_id: str, user: User) -> None:
-    professional = await get_professional(db, professional_id)
-    if professional.user_id != user.id:
+async def _verify_owner(
+    db: AsyncSession, professional_store_id: str, user: User
+) -> ProfessionalStore:
+    """
+    Returns the active ProfessionalStore link if `user` may manage offerings on it.
+    Allowed: the professional behind the link, or the store owner.
+    """
+    result = await db.execute(
+        select(ProfessionalStore, Professional, Store)
+        .join(Professional, Professional.id == ProfessionalStore.professional_id)
+        .join(Store, Store.id == ProfessionalStore.store_id)
+        .where(
+            ProfessionalStore.id == professional_store_id,
+            ProfessionalStore.deleted_at.is_(None),
+        )
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Vínculo profissional-loja não encontrado",
+        )
+    link, professional, store = row
+    if professional.user_id != user.id and store.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Acesso negado")
+    return link
 
 
 async def create_offering(
     db: AsyncSession,
-    professional_id: str,
+    professional_store_id: str,
     data: OfferingCreate,
     user: User,
 ) -> Offering:
-    await _verify_owner(db, professional_id, user)
+    await _verify_owner(db, professional_store_id, user)
 
     offering = Offering(
-        professional_id=professional_id,
+        professional_store_id=professional_store_id,
         name=data.name,
         description=data.description,
         price=data.price,
@@ -37,13 +62,13 @@ async def create_offering(
     return offering
 
 
-async def list_professional_offerings(
-    db: AsyncSession, professional_id: str
+async def list_professional_store_offerings(
+    db: AsyncSession, professional_store_id: str
 ) -> list[Offering]:
-    await get_professional(db, professional_id)
+    await get_professional_store(db, professional_store_id)
     result = await db.execute(
         select(Offering).where(
-            Offering.professional_id == professional_id,
+            Offering.professional_store_id == professional_store_id,
             Offering.deleted_at.is_(None),
             Offering.is_active.is_(True),
         )
@@ -71,7 +96,7 @@ async def update_offering(
     user: User,
 ) -> Offering:
     offering = await get_offering(db, offering_id)
-    await _verify_owner(db, offering.professional_id, user)
+    await _verify_owner(db, offering.professional_store_id, user)
 
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(offering, field, value)
@@ -85,7 +110,7 @@ async def delete_offering(
     db: AsyncSession, offering_id: str, user: User
 ) -> None:
     offering = await get_offering(db, offering_id)
-    await _verify_owner(db, offering.professional_id, user)
+    await _verify_owner(db, offering.professional_store_id, user)
 
     offering.deleted_at = datetime.now(timezone.utc)
     await db.commit()

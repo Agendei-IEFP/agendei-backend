@@ -37,7 +37,7 @@ class OfferingPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    professional_id: str
+    professional_store_id: str
     name: str
     description: str | None
     price: Decimal

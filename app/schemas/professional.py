@@ -1,14 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr
-
-
-class ProfessionalCreate(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
-    bio: str | None = None
-    photo_url: str | None = None
+from pydantic import BaseModel, ConfigDict
 
 
 class ProfessionalSelfCreate(BaseModel):
@@ -27,9 +19,19 @@ class ProfessionalPublic(BaseModel):
 
     id: str
     user_id: str
-    store_id: str
     bio: str | None
     photo_url: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProfessionalStorePublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    professional_id: str
+    store_id: str
     is_active: bool
     created_at: datetime
     updated_at: datetime

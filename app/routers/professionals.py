@@ -5,27 +5,21 @@ from app.core.dependencies import require_role
 from app.db.session import get_db
 from app.models.user import RoleEnum, User
 from app.schemas.professional import (
-    ProfessionalCreate,
     ProfessionalPublic,
     ProfessionalSelfCreate,
+    ProfessionalStorePublic,
     ProfessionalUpdate,
 )
 from app.services import professional_service
 
 router = APIRouter(prefix="/stores/{store_id}/professionals", tags=["professionals"])
 
-
-@router.post("", response_model=ProfessionalPublic, status_code=status.HTTP_201_CREATED)
-async def add_professional(
-    store_id: str,
-    data: ProfessionalCreate,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_role(RoleEnum.store_admin)),
-):
-    return await professional_service.add_professional(db, store_id, data, admin)
+professional_links_router = APIRouter(
+    prefix="/stores/{store_id}/professional-links", tags=["professionals"]
+)
 
 
-@router.post("/me", response_model=ProfessionalPublic, status_code=status.HTTP_201_CREATED)
+@router.post("/me", response_model=ProfessionalStorePublic, status_code=status.HTTP_201_CREATED)
 async def add_admin_as_professional(
     store_id: str,
     data: ProfessionalSelfCreate,
@@ -48,14 +42,14 @@ async def update_professional(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_role(RoleEnum.store_admin)),
 ):
-    return await professional_service.update_professional(db, professional_id, data, admin)
+    return await professional_service.update_professional(db, store_id, professional_id, data, admin)
 
 
-@router.delete("/{professional_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_professional(
+@professional_links_router.delete("/{professional_store_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink_professional(
     store_id: str,
-    professional_id: str,
+    professional_store_id: str,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_role(RoleEnum.store_admin)),
 ):
-    await professional_service.remove_professional(db, professional_id, admin)
+    await professional_service.unlink_professional_from_store(db, professional_store_id, admin)

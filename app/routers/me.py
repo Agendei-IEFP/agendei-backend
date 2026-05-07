@@ -5,8 +5,9 @@ from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.models.user import RoleEnum, User
 from app.schemas.appointment import AppointmentPublic
+from app.schemas.professional import ProfessionalStorePublic
 from app.schemas.store import StorePublic
-from app.services import appointment_service, store_service
+from app.services import appointment_service, professional_service, store_service
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -25,3 +26,11 @@ async def list_my_appointments(
     current_user: User = Depends(get_current_user),
 ):
     return await appointment_service.list_client_appointments(db, current_user)
+
+
+@router.get("/professional-stores", response_model=list[ProfessionalStorePublic])
+async def list_my_professional_stores(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await professional_service.list_user_professional_stores(db, current_user)
