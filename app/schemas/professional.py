@@ -35,3 +35,16 @@ class ProfessionalStorePublic(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class ProfessionalWithStorePublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    user_id: str
+    name: str
+    bio: str | None
+    photo_url: str | None
+    is_active: bool
+    store_id: str
+    store_name: str
