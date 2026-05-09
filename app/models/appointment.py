@@ -39,3 +39,4 @@ class Appointment(Base, ULIDMixin, TimestampMixin):
     professional: Mapped[Professional] = relationship("Professional")
     professional_store: Mapped[ProfessionalStore] = relationship("ProfessionalStore")
     offering: Mapped[Offering] = relationship("Offering")
+    notifications = relationship("Notification", back_populates="appointment")
