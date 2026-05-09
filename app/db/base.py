@@ -7,3 +7,4 @@ from app.models.professional_invite import ProfessionalInvite  # noqa: F401
 from app.models.offering import Offering  # noqa: F401
 from app.models.work_schedule import WorkSchedule  # noqa: F401
 from app.models.appointment import Appointment  # noqa: F401
+from app.models.notification import Notification
