@@ -4,19 +4,27 @@ from sqlalchemy import (
     Text,
     Integer,
     DateTime,
-    ForeignKey,
-    JSON
+    ForeignKey
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.mixins import Base, ULIDMixin, TimestampMixin
 from enum import Enum
 from sqlalchemy import Enum as SAEnum
 
+
 class NotificationType(str, Enum):
     reminder = "reminder"
     confirmation = "confirmation"
     cancellation = "cancellation"
     evaluation = "evaluation"
+
+
+class NotificationStatus(str, Enum):
+    pending = "pending"
+    scheduled = "scheduled"
+    sent = "sent"
+    failed = "failed"
+    cancelled = "cancelled"
 
 
 class RecipientType(str, Enum):
@@ -30,17 +38,16 @@ class NotificationChannel(str, Enum):
     whatsapp = "whatsapp"
 
 
-
 class Notification(Base, ULIDMixin, TimestampMixin):
     __tablename__ = "notifications"
 
     notification_type: Mapped[NotificationType] = mapped_column(
     SAEnum(NotificationType),
-    nullable=False
+    nullable=False,
     ) # se é de marcação, cancelamento, avaliacao
 
     channel: Mapped[NotificationChannel] = mapped_column(
-        SAEnum(NotificationType),
+        SAEnum(NotificationChannel),
         nullable=False,
     ) # whats, email, etc
 
@@ -70,15 +77,10 @@ class Notification(Base, ULIDMixin, TimestampMixin):
         nullable=False,
     ) # mensagem da notificação
 
-    """payload: Mapped[dict | None] = mapped_column(
-        JSON,
-        nullable=True,
-    ) # aqui é um JSON que pode conter dados mais específicos para economizar campos
-    """
-    status: Mapped[str] = mapped_column(
-        String(20),
+    status: Mapped[NotificationStatus] = mapped_column(
+        SAEnum(NotificationStatus),
         nullable=False,
-        default="pending",
+        default=NotificationStatus.pending,
     ) # estatus
 
     attempts: Mapped[int] = mapped_column(
