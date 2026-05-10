@@ -37,7 +37,7 @@ async def create_invite(
     db.add(invite)
     await db.commit()
 
-    url = f"{settings.frontend_url}/convite/{token}"
+    url = f"{settings.frontend_url}/invite/{token}"
     return InviteCreatedResponse(token=token, url=url, expires_at=expires_at)
 
 

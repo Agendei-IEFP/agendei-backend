@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.professional import Professional
 from app.models.professional_store import ProfessionalStore
+from app.models.store import Store
 from app.models.user import User
 from app.schemas.professional import ProfessionalSelfCreate, ProfessionalUpdate
 from app.services.store_service import get_store
@@ -187,3 +188,35 @@ async def list_user_professional_stores(
         )
     )
     return list(result.scalars().all())
+
+
+async def list_my_professionals(
+    db: AsyncSession, admin: User
+) -> list[dict]:
+    result = await db.execute(
+        select(
+            Professional.id,
+            Professional.user_id,
+            User.name,
+            Professional.bio,
+            Professional.photo_url,
+            Professional.is_active,
+            ProfessionalStore.store_id,
+            Store.name.label("store_name"),
+        )
+        .join(User, User.id == Professional.user_id)
+        .join(
+            ProfessionalStore,
+            ProfessionalStore.professional_id == Professional.id,
+        )
+        .join(Store, Store.id == ProfessionalStore.store_id)
+        .where(
+            Store.owner_id == admin.id,
+            Store.deleted_at.is_(None),
+            ProfessionalStore.deleted_at.is_(None),
+            ProfessionalStore.is_active.is_(True),
+            Professional.deleted_at.is_(None),
+        )
+    )
+    rows = result.mappings().all()
+    return [dict(row) for row in rows]
