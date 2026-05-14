@@ -124,3 +124,20 @@ async def test_logout(client: AsyncClient):
     })
     response = await client.post(LOGOUT_URL)
     assert response.status_code == 204
+
+
+async def test_logout_then_refresh_fails(client: AsyncClient):
+    await client.post(REGISTER_URL, json=VALID_USER)
+    await client.post(LOGIN_URL, json={
+        "email": VALID_USER["email"],
+        "password": VALID_USER["password"],
+    })
+    await client.post(LOGOUT_URL)
+    response = await client.post(REFRESH_URL)
+    assert response.status_code == 401
+
+
+async def test_register_professional_role_forbidden(client: AsyncClient):
+    data = {**VALID_USER, "role": "professional"}
+    response = await client.post(REGISTER_URL, json=data)
+    assert response.status_code == 422

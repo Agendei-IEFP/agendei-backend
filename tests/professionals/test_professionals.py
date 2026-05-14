@@ -164,14 +164,14 @@ async def test_list_store_professionals_empty(client: AsyncClient):
 async def test_list_store_professionals_with_one(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
-    await _link_admin_as_professional(client, token, store_id)
+    link = await _link_admin_as_professional(client, token, store_id)
 
     response = await client.get(f"{STORES_URL}/{store_id}/professionals")
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 1
-    assert "id" in body[0]
-    assert "user_id" in body[0]
+    assert body[0]["id"] == link["professional_id"]
+    assert body[0]["is_active"] is True
     assert "deleted_at" not in body[0]
 
 
@@ -188,18 +188,22 @@ async def test_list_store_professionals_store_not_found(client: AsyncClient):
 async def test_update_professional_success(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
-    link = await _link_admin_as_professional(client, token, store_id)
+    link = await _link_admin_as_professional(
+        client, token, store_id
+    )  # sets bio=None, photo_url=None
     professional_id = link["professional_id"]
 
     response = await client.patch(
         f"{STORES_URL}/{store_id}/professionals/{professional_id}",
-        json={"bio": "Nova bio", "is_active": False},
+        json={"bio": "Nova bio"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
     body = response.json()
     assert body["bio"] == "Nova bio"
-    assert body["is_active"] is False
+    # field not sent must remain unchanged
+    assert body["photo_url"] is None
+    assert body["is_active"] is True
 
 
 async def test_update_professional_not_owner(client: AsyncClient):
