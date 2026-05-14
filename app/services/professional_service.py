@@ -190,6 +190,32 @@ async def list_user_professional_stores(
     return list(result.scalars().all())
 
 
+async def get_my_profile(db: AsyncSession, user: User) -> Professional:
+    result = await db.execute(
+        select(Professional).where(
+            Professional.user_id == user.id,
+            Professional.deleted_at.is_(None),
+        )
+    )
+    professional = result.scalar_one_or_none()
+    if professional is None:
+        raise HTTPException(status_code=404, detail="Perfil de profissional não encontrado")
+    return professional
+
+
+async def update_my_profile(
+    db: AsyncSession, data: ProfessionalUpdate, user: User
+) -> Professional:
+    professional = await get_my_profile(db, user)
+
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(professional, field, value)
+
+    await db.commit()
+    await db.refresh(professional)
+    return professional
+
+
 async def list_my_professionals(
     db: AsyncSession, admin: User
 ) -> list[dict]:
