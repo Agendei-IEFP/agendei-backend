@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.store import StorePublic
+
 
 class ProfessionalSelfCreate(BaseModel):
     bio: str | None = None
@@ -33,6 +35,7 @@ class ProfessionalStorePublic(BaseModel):
     professional_id: str
     store_id: str
     is_active: bool
+    store: StorePublic
     created_at: datetime
     updated_at: datetime
 

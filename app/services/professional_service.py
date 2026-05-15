@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.professional import Professional
 from app.models.professional_store import ProfessionalStore
@@ -97,8 +98,13 @@ async def add_admin_as_professional(
         db.add(link)
 
     await db.commit()
-    await db.refresh(link)
-    return link
+
+    result = await db.execute(
+        select(ProfessionalStore)
+        .options(selectinload(ProfessionalStore.store))
+        .where(ProfessionalStore.id == link.id)
+    )
+    return result.scalar_one()
 
 
 async def list_store_professionals(
@@ -181,7 +187,9 @@ async def list_user_professional_stores(
         return []
 
     result = await db.execute(
-        select(ProfessionalStore).where(
+        select(ProfessionalStore)
+        .options(selectinload(ProfessionalStore.store))
+        .where(
             ProfessionalStore.professional_id == professional.id,
             ProfessionalStore.deleted_at.is_(None),
             ProfessionalStore.is_active.is_(True),
