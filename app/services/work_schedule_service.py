@@ -1,3 +1,5 @@
+from datetime import time
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +37,32 @@ async def _verify_owner(
     return link
 
 
+async def _assert_no_overlap(
+    db: AsyncSession,
+    professional_store_id: str,
+    weekday: int,
+    start_time: time,
+    end_time: time,
+    exclude_id: str | None = None,
+) -> None:
+    """Raises 409 if [start_time, end_time) overlaps any active block on the same day."""
+    q = select(WorkSchedule).where(
+        WorkSchedule.professional_store_id == professional_store_id,
+        WorkSchedule.weekday == weekday,
+        WorkSchedule.is_active.is_(True),
+        WorkSchedule.start_time < end_time,
+        WorkSchedule.end_time > start_time,
+    )
+    if exclude_id is not None:
+        q = q.where(WorkSchedule.id != exclude_id)
+    result = await db.execute(q)
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="O bloco de horário se sobrepõe a um existente neste dia",
+        )
+
+
 async def create_work_schedule(
     db: AsyncSession,
     professional_store_id: str,
@@ -42,19 +70,9 @@ async def create_work_schedule(
     user: User,
 ) -> WorkSchedule:
     await _verify_owner(db, professional_store_id, user)
-
-    already_exists = await db.execute(
-        select(WorkSchedule).where(
-            WorkSchedule.professional_store_id == professional_store_id,
-            WorkSchedule.weekday == data.weekday,
-            WorkSchedule.is_active.is_(True),
-        )
+    await _assert_no_overlap(
+        db, professional_store_id, data.weekday, data.start_time, data.end_time
     )
-    if already_exists.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Já existe um horário ativo para o dia {data.weekday} neste vínculo",
-        )
 
     schedule = WorkSchedule(
         professional_store_id=professional_store_id,
@@ -103,7 +121,20 @@ async def update_work_schedule(
     schedule = await get_work_schedule(db, schedule_id)
     await _verify_owner(db, schedule.professional_store_id, user)
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    if "start_time" in updates or "end_time" in updates:
+        new_start = updates.get("start_time", schedule.start_time)
+        new_end = updates.get("end_time", schedule.end_time)
+        await _assert_no_overlap(
+            db,
+            schedule.professional_store_id,
+            schedule.weekday,
+            new_start,
+            new_end,
+            exclude_id=schedule_id,
+        )
+
+    for field, value in updates.items():
         setattr(schedule, field, value)
 
     await db.commit()
