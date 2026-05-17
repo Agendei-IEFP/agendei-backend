@@ -36,6 +36,15 @@ async def list_my_appointments(
     return await appointment_service.list_client_appointments(db, current_user)
 
 
+@router.get("/professional-appointments", response_model=list[AppointmentPublic])
+async def list_my_professional_appointments(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(RoleEnum.professional)),
+):
+    professional = await professional_service.get_my_profile(db, current_user)
+    return await appointment_service.list_professional_appointments(db, professional.id, current_user)
+
+
 @router.get("/professional-stores", response_model=list[ProfessionalStorePublic])
 async def list_my_professional_stores(
     db: AsyncSession = Depends(get_db),
