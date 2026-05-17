@@ -28,15 +28,19 @@ async def list_available_slots(
     """
     Returns all free slots for a (professional, store) link on a given day.
 
-    1. Fetch the WorkSchedule for that link and weekday. If absent, return [].
+    1. Fetch all active WorkSchedule blocks for that link and weekday.
+       If none, return [].
     2. Fetch all conflicting appointments for that PROFESSIONAL (across every
        store they work in) — a busy slot anywhere blocks it everywhere.
-    3. From the shift start, walk in offering-duration steps, dropping slots
-       that collide with existing appointments.
+    3. For each block, walk a fixed 10-minute grid. A slot is offered only if
+       the full service duration fits within the block (no crossing pauses)
+       and doesn't collide with existing appointments.
 
-    Because we store ends_at on Appointment, the collision check is just:
+    Because we store ends_at on Appointment, the collision check is:
         new_start < existing_end AND new_end > existing_start
     """
+    SLOT_GRID_MINUTES = 10
+
     link = await get_professional_store(db, professional_store_id)
     offering = await get_offering(db, offering_id)
     if offering.professional_store_id != professional_store_id:
@@ -46,15 +50,15 @@ async def list_available_slots(
         )
 
     weekday = query_date.weekday()  # 0=Monday, 6=Sunday
-    result_schedule = await db.execute(
+    result_schedules = await db.execute(
         select(WorkSchedule).where(
             WorkSchedule.professional_store_id == professional_store_id,
             WorkSchedule.weekday == weekday,
             WorkSchedule.is_active.is_(True),
-        )
+        ).order_by(WorkSchedule.start_time)
     )
-    schedule = result_schedule.scalar_one_or_none()
-    if schedule is None:
+    blocks = list(result_schedules.scalars().all())
+    if not blocks:
         return []
 
     day_start = datetime.combine(query_date, time.min).replace(tzinfo=timezone.utc)
@@ -72,19 +76,22 @@ async def list_available_slots(
 
     effective_duration = offering.duration_override if offering.duration_override is not None else offering.service.default_duration_minutes
     duration = timedelta(minutes=effective_duration)
-    slots: list[AvailableSlot] = []
-    cursor = datetime.combine(query_date, schedule.start_time).replace(tzinfo=timezone.utc)
-    shift_end = datetime.combine(query_date, schedule.end_time).replace(tzinfo=timezone.utc)
+    grid_step = timedelta(minutes=SLOT_GRID_MINUTES)
     now = datetime.now(timezone.utc)
+    slots: list[AvailableSlot] = []
 
-    while cursor + duration <= shift_end:
-        slot_start = cursor
-        slot_end = cursor + duration
+    for block in blocks:
+        cursor = datetime.combine(query_date, block.start_time).replace(tzinfo=timezone.utc)
+        block_end = datetime.combine(query_date, block.end_time).replace(tzinfo=timezone.utc)
 
-        if slot_start > now and not _collides(slot_start, slot_end, booked):
-            slots.append(AvailableSlot(start=slot_start, end=slot_end))
+        while cursor + duration <= block_end:
+            slot_start = cursor
+            slot_end = cursor + duration
 
-        cursor += duration
+            if slot_start > now and not _collides(slot_start, slot_end, booked):
+                slots.append(AvailableSlot(start=slot_start, end=slot_end))
+
+            cursor += grid_step
 
     return slots
 
