@@ -8,8 +8,14 @@ from app.db.session import get_db
 from app.models.user import RoleEnum, User
 from app.schemas.appointment import AppointmentPublic, AvailableSlot
 from app.schemas.offering import OfferingCreate, OfferingPublic, OfferingUpdate
-from app.schemas.work_schedule import WorkScheduleCreate, WorkSchedulePublic, WorkScheduleUpdate
-from app.services import appointment_service, offering_service, work_schedule_service
+from app.schemas.store_availability import (
+    StoreAvailabilityBulkReplace,
+    StoreAvailabilityCreate,
+    StoreAvailabilityPublic,
+    StoreAvailabilityUpdate,
+)
+from app.schemas.work_schedule import WorkScheduleBulkReplace, WorkScheduleCreate, WorkSchedulePublic, WorkScheduleUpdate
+from app.services import appointment_service, offering_service, store_availability_service, work_schedule_service
 
 professionals_router = APIRouter(
     prefix="/professionals/{professional_id}",
@@ -29,6 +35,11 @@ offerings_router = APIRouter(
 schedules_router = APIRouter(
     prefix="/professional-stores/{professional_store_id}/schedules",
     tags=["schedules"],
+)
+
+availability_router = APIRouter(
+    prefix="/professional-stores/{professional_store_id}/availability",
+    tags=["availability"],
 )
 
 
@@ -147,3 +158,72 @@ async def delete_work_schedule(
     user: User = Depends(require_role(RoleEnum.professional, RoleEnum.store_admin)),
 ):
     await work_schedule_service.delete_work_schedule(db, schedule_id, user)
+
+
+@schedules_router.put("", response_model=list[WorkSchedulePublic])
+async def replace_work_schedules(
+    professional_store_id: str,
+    data: WorkScheduleBulkReplace,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role(RoleEnum.professional, RoleEnum.store_admin)),
+):
+    return await work_schedule_service.replace_blocks(db, professional_store_id, data, user)
+
+
+# ---------------------------------------------------------------------------
+# Store availability overrides
+# ---------------------------------------------------------------------------
+
+
+@availability_router.get("", response_model=list[StoreAvailabilityPublic])
+async def list_store_availability(
+    professional_store_id: str, db: AsyncSession = Depends(get_db)
+):
+    return await store_availability_service.list_store_availability(db, professional_store_id)
+
+
+@availability_router.post(
+    "", response_model=StoreAvailabilityPublic, status_code=status.HTTP_201_CREATED
+)
+async def create_store_availability(
+    professional_store_id: str,
+    data: StoreAvailabilityCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role(RoleEnum.professional, RoleEnum.store_admin)),
+):
+    return await store_availability_service.create_store_availability(
+        db, professional_store_id, data, user
+    )
+
+
+@availability_router.patch("/{availability_id}", response_model=StoreAvailabilityPublic)
+async def update_store_availability(
+    professional_store_id: str,
+    availability_id: str,
+    data: StoreAvailabilityUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role(RoleEnum.professional, RoleEnum.store_admin)),
+):
+    return await store_availability_service.update_store_availability(
+        db, availability_id, data, user
+    )
+
+
+@availability_router.delete("/{availability_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_store_availability(
+    professional_store_id: str,
+    availability_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role(RoleEnum.professional, RoleEnum.store_admin)),
+):
+    await store_availability_service.delete_store_availability(db, availability_id, user)
+
+
+@availability_router.put("", response_model=list[StoreAvailabilityPublic])
+async def replace_store_availability(
+    professional_store_id: str,
+    data: StoreAvailabilityBulkReplace,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role(RoleEnum.professional, RoleEnum.store_admin)),
+):
+    return await store_availability_service.replace_availability(db, professional_store_id, data, user)
