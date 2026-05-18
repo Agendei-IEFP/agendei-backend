@@ -8,6 +8,7 @@ from app.models.appointment import Appointment, StatusEnum
 from app.models.professional import Professional
 from app.models.professional_store import ProfessionalStore
 from app.models.store import Store
+from app.models.store_availability import StoreAvailability
 from app.models.user import User
 from app.models.work_schedule import WorkSchedule
 from app.schemas.appointment import AppointmentCreate, AppointmentUpdate, AvailableSlot
@@ -50,14 +51,30 @@ async def list_available_slots(
         )
 
     weekday = query_date.weekday()  # 0=Monday, 6=Sunday
-    result_schedules = await db.execute(
-        select(WorkSchedule).where(
-            WorkSchedule.professional_store_id == professional_store_id,
-            WorkSchedule.weekday == weekday,
-            WorkSchedule.is_active.is_(True),
-        ).order_by(WorkSchedule.start_time)
+
+    # Use StoreAvailability overrides when present; fall back to base WorkSchedule
+    result_overrides = await db.execute(
+        select(StoreAvailability).where(
+            StoreAvailability.professional_store_id == professional_store_id,
+            StoreAvailability.weekday == weekday,
+            StoreAvailability.deleted_at.is_(None),
+            StoreAvailability.is_active.is_(True),
+        ).order_by(StoreAvailability.start_time)
     )
-    blocks = list(result_schedules.scalars().all())
+    override_blocks = list(result_overrides.scalars().all())
+
+    if override_blocks:
+        blocks = override_blocks
+    else:
+        result_schedules = await db.execute(
+            select(WorkSchedule).where(
+                WorkSchedule.professional_store_id == professional_store_id,
+                WorkSchedule.weekday == weekday,
+                WorkSchedule.is_active.is_(True),
+            ).order_by(WorkSchedule.start_time)
+        )
+        blocks = list(result_schedules.scalars().all())
+
     if not blocks:
         return []
 
