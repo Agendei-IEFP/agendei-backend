@@ -41,3 +41,7 @@ class WorkSchedulePublic(BaseModel):
     start_time: time
     end_time: time
     is_active: bool
+
+
+class WorkScheduleBulkReplace(BaseModel):
+    blocks: list[WorkScheduleCreate]

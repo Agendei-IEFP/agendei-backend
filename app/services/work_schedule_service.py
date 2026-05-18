@@ -9,7 +9,7 @@ from app.models.professional_store import ProfessionalStore
 from app.models.store import Store
 from app.models.user import User
 from app.models.work_schedule import WorkSchedule
-from app.schemas.work_schedule import WorkScheduleCreate, WorkScheduleUpdate
+from app.schemas.work_schedule import WorkScheduleBulkReplace, WorkScheduleCreate, WorkScheduleUpdate
 from app.services.professional_service import get_professional_store
 
 
@@ -150,3 +150,51 @@ async def delete_work_schedule(
 
     schedule.is_active = False
     await db.commit()
+
+
+async def replace_blocks(
+    db: AsyncSession,
+    professional_store_id: str,
+    data: WorkScheduleBulkReplace,
+    user: User,
+) -> list[WorkSchedule]:
+    await _verify_owner(db, professional_store_id, user)
+
+    # Validate overlaps within the incoming payload itself (day → list of (start, end))
+    seen: dict[int, list[tuple[time, time]]] = {}
+    for block in data.blocks:
+        intervals = seen.setdefault(block.weekday, [])
+        for existing_start, existing_end in intervals:
+            if block.start_time < existing_end and block.end_time > existing_start:
+                raise HTTPException(
+                    status_code=409,
+                    detail="O payload contém blocos sobrepostos no mesmo dia",
+                )
+        intervals.append((block.start_time, block.end_time))
+
+    # Soft-delete all current active blocks
+    result = await db.execute(
+        select(WorkSchedule).where(
+            WorkSchedule.professional_store_id == professional_store_id,
+            WorkSchedule.is_active.is_(True),
+        )
+    )
+    for schedule in result.scalars().all():
+        schedule.is_active = False
+
+    # Create the new blocks
+    new_schedules: list[WorkSchedule] = []
+    for block in data.blocks:
+        schedule = WorkSchedule(
+            professional_store_id=professional_store_id,
+            weekday=block.weekday,
+            start_time=block.start_time,
+            end_time=block.end_time,
+        )
+        db.add(schedule)
+        new_schedules.append(schedule)
+
+    await db.commit()
+    for schedule in new_schedules:
+        await db.refresh(schedule)
+    return new_schedules
