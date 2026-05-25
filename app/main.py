@@ -1,7 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from starlette.responses import JSONResponse
 
 from app.core.config import settings
+from app.limiter.limiter import limiter
 from app.routers import auth as auth_router
 from app.routers.stores import router as stores_router
 from app.routers.professionals import router as professionals_router, professional_links_router
@@ -21,6 +25,8 @@ app = FastAPI(
     description="Sistema de agendamentos para salões",
     version="0.4.0",
 )
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,6 +35,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(RateLimitExceeded)
+async def custom_exception_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Too many request. Please slow down.",
+            "limit": str(exc.limit.limit),
+            "route": request.url.path
+        }
+    )
 
 PREFIX = "/api/v1"
 
