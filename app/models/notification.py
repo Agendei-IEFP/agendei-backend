@@ -21,6 +21,7 @@ class NotificationType(str, Enum):
 
 class NotificationStatus(str, Enum):
     pending = "pending"
+    retrying = "retrying"
     scheduled = "scheduled"
     sent = "sent"
     failed = "failed"
@@ -89,6 +90,12 @@ class Notification(Base, ULIDMixin, TimestampMixin):
         default=0,
     ) # contador de tentativas de envio da notificaçao para o Worker
 
+    max_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=3,
+    )  # maximo de tentativas de envio da notificaçao para o Worker
+
     error_message: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
@@ -98,6 +105,7 @@ class Notification(Base, ULIDMixin, TimestampMixin):
         DateTime(timezone=True),
         nullable=False,
     ) # Data que será enviada a notificação
+
 
     sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
