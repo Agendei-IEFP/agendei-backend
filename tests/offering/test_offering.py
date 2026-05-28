@@ -246,7 +246,7 @@ async def test_create_offering_unauthorized(client: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
-async def test_list_offerings_returns_enabled_only(client: AsyncClient):
+async def test_list_offerings_disabled_still_appears(client: AsyncClient):
     ctx = await _setup(client)
     service_id = await _create_service(client, ctx["prof_token"])
 
@@ -268,7 +268,38 @@ async def test_list_offerings_returns_enabled_only(client: AsyncClient):
         f"{PROF_STORES_BASE}/{ctx['professional_store_id']}/offerings"
     )
     assert response.status_code == 200
-    assert response.json() == []
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["id"] == offering_id
+    assert body[0]["is_enabled"] is False
+
+
+async def test_toggle_off_then_on_no_conflict(client: AsyncClient):
+    ctx = await _setup(client)
+    service_id = await _create_service(client, ctx["prof_token"])
+
+    offering_res = await client.post(
+        f"{PROF_STORES_BASE}/{ctx['professional_store_id']}/offerings",
+        json={"service_id": service_id},
+        headers={"Authorization": f"Bearer {ctx['prof_token']}"},
+    )
+    offering_id = offering_res.json()["id"]
+
+    # Disable
+    await client.patch(
+        f"{PROF_STORES_BASE}/{ctx['professional_store_id']}/offerings/{offering_id}",
+        json={"is_enabled": False},
+        headers={"Authorization": f"Bearer {ctx['prof_token']}"},
+    )
+
+    # Re-enable — should succeed with 200, not 409
+    response = await client.patch(
+        f"{PROF_STORES_BASE}/{ctx['professional_store_id']}/offerings/{offering_id}",
+        json={"is_enabled": True},
+        headers={"Authorization": f"Bearer {ctx['prof_token']}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["is_enabled"] is True
 
 
 async def test_list_offerings_includes_service_data(client: AsyncClient):

@@ -103,7 +103,6 @@ async def list_professional_store_offerings(
         .where(
             Offering.professional_store_id == professional_store_id,
             Offering.deleted_at.is_(None),
-            Offering.is_enabled.is_(True),
             Service.deleted_at.is_(None),
             Service.is_active.is_(True),
         )
