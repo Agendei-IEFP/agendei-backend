@@ -268,3 +268,63 @@ async def test_delete_store_no_token(client: AsyncClient, admin_token: str):
     store_id = created.json()["id"]
     response = await client.delete(f"{BASE_URL}/{store_id}")
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /stores?store_type=
+# ---------------------------------------------------------------------------
+
+
+async def test_list_stores_filter_by_type(client: AsyncClient, admin_token: str):
+    await client.post(
+        BASE_URL,
+        json={**VALID_STORE, "store_type": "barbershop"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    await client.post(
+        BASE_URL,
+        json={"name": "Salão de Cabelo", "store_type": "hair_salon"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    response = await client.get(f"{BASE_URL}?store_type=barbershop")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["store_type"] == "barbershop"
+
+
+async def test_list_stores_no_filter_returns_all(client: AsyncClient, admin_token: str):
+    await client.post(
+        BASE_URL,
+        json={**VALID_STORE, "store_type": "barbershop"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    await client.post(
+        BASE_URL,
+        json={"name": "Salão de Cabelo", "store_type": "hair_salon"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    response = await client.get(BASE_URL)
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+
+async def test_list_stores_filter_returns_empty_when_no_match(
+    client: AsyncClient, admin_token: str
+):
+    await client.post(
+        BASE_URL,
+        json={**VALID_STORE, "store_type": "barbershop"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    response = await client.get(f"{BASE_URL}?store_type=nails")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_list_stores_invalid_type_returns_422(client: AsyncClient):
+    response = await client.get(f"{BASE_URL}?store_type=invalid_value")
+    assert response.status_code == 422

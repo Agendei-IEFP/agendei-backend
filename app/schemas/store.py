@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.models.store import StoreType
+
 
 class StoreCreate(BaseModel):
     name: str
@@ -10,6 +12,7 @@ class StoreCreate(BaseModel):
     email: str | None = None
     address: str | None = None
     logo_url: str | None = None
+    store_type: StoreType | None = None
 
 
 class StoreUpdate(BaseModel):
@@ -19,6 +22,7 @@ class StoreUpdate(BaseModel):
     email: str | None = None
     address: str | None = None
     logo_url: str | None = None
+    store_type: StoreType | None = None
 
 
 class StorePublic(BaseModel):
@@ -31,7 +35,10 @@ class StorePublic(BaseModel):
     address: str | None
     logo_url: str | None
     is_active: bool
+    store_type: StoreType | None
     created_at: datetime
     updated_at: datetime
+    professional_count: int = 0
+    service_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
