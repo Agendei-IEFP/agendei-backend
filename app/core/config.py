@@ -1,3 +1,4 @@
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,5 +16,10 @@ class Settings(BaseSettings):
     current_terms_version: str
     frontend_url: str
 
+    SMTP_HOST: str
+    SMTP_PORT: int
+    SMTP_USER: str
+    SMTP_PASSWORD: str
+    REDIS_URL: str
 
 settings = Settings()  # type: ignore[call-arg]
