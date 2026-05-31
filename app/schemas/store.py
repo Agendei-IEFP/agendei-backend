@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -42,3 +43,10 @@ class StorePublic(BaseModel):
     service_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class StoreOfferingPublic(BaseModel):
+    service_id: str
+    service_name: str
+    effective_price: Decimal
+    effective_duration_minutes: int

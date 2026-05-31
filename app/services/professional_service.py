@@ -9,7 +9,7 @@ from app.models.professional import Professional
 from app.models.professional_store import ProfessionalStore
 from app.models.store import Store
 from app.models.user import User
-from app.schemas.professional import ProfessionalSelfCreate, ProfessionalUpdate
+from app.schemas.professional import ProfessionalSelfCreate, ProfessionalUpdate, ProfessionalWithNamePublic
 from app.services.store_service import get_store
 
 
@@ -125,6 +125,35 @@ async def list_store_professionals(
         )
     )
     return list(result.scalars().all())
+
+
+async def list_store_professionals_with_name(
+    db: AsyncSession, store_id: str
+) -> list[ProfessionalWithNamePublic]:
+    await get_store(db, store_id)
+    result = await db.execute(
+        select(
+            Professional.id,
+            Professional.user_id,
+            User.name,
+            Professional.bio,
+            Professional.photo_url,
+            Professional.is_active,
+        )
+        .join(User, User.id == Professional.user_id)
+        .join(
+            ProfessionalStore,
+            ProfessionalStore.professional_id == Professional.id,
+        )
+        .where(
+            ProfessionalStore.store_id == store_id,
+            ProfessionalStore.deleted_at.is_(None),
+            ProfessionalStore.is_active.is_(True),
+            Professional.deleted_at.is_(None),
+        )
+    )
+    rows = result.mappings().all()
+    return [ProfessionalWithNamePublic(**dict(row)) for row in rows]
 
 
 async def update_professional(

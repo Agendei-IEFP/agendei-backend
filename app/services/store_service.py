@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -6,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.offering import Offering
 from app.models.professional_store import ProfessionalStore
+from app.models.service import Service
 from app.models.store import Store, StoreType
 from app.models.user import User
-from app.schemas.store import StoreCreate, StorePublic, StoreUpdate
+from app.schemas.store import StoreCreate, StoreOfferingPublic, StorePublic, StoreUpdate
 
 
 async def list_stores(
@@ -136,3 +138,42 @@ async def delete_store(
         raise HTTPException(status_code=403, detail="Acesso negado")
     store.deleted_at = datetime.now(timezone.utc)
     await db.commit()
+
+
+async def list_store_offerings(db: AsyncSession, store_id: str) -> list[StoreOfferingPublic]:
+    await get_store(db, store_id)
+
+    result = await db.execute(
+        select(
+            Service.id.label("service_id"),
+            Service.name.label("service_name"),
+            func.min(
+                func.coalesce(Offering.price_override, Service.default_price)
+            ).label("effective_price"),
+            func.min(
+                func.coalesce(Offering.duration_override, Service.default_duration_minutes)
+            ).label("effective_duration_minutes"),
+        )
+        .join(Offering, Offering.service_id == Service.id)
+        .join(ProfessionalStore, ProfessionalStore.id == Offering.professional_store_id)
+        .where(
+            ProfessionalStore.store_id == store_id,
+            ProfessionalStore.deleted_at.is_(None),
+            ProfessionalStore.is_active.is_(True),
+            Offering.is_enabled.is_(True),
+            Offering.deleted_at.is_(None),
+            Service.deleted_at.is_(None),
+        )
+        .group_by(Service.id, Service.name)
+        .order_by(Service.name)
+    )
+    rows = result.mappings().all()
+    return [
+        StoreOfferingPublic(
+            service_id=row["service_id"],
+            service_name=row["service_name"],
+            effective_price=row["effective_price"],
+            effective_duration_minutes=row["effective_duration_minutes"],
+        )
+        for row in rows
+    ]

@@ -28,6 +28,17 @@ class ProfessionalPublic(BaseModel):
     updated_at: datetime
 
 
+class ProfessionalWithNamePublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    user_id: str
+    name: str
+    bio: str | None
+    photo_url: str | None
+    is_active: bool
+
+
 class ProfessionalStorePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
