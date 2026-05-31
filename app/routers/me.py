@@ -5,7 +5,7 @@ from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.models.user import RoleEnum, User
 from app.schemas.appointment import AppointmentPublic
-from app.schemas.professional import ProfessionalStorePublic, ProfessionalWithStorePublic
+from app.schemas.professional import ProfessionalPublic, ProfessionalStorePublic, ProfessionalUpdate, ProfessionalWithStorePublic
 from app.schemas.store import StorePublic
 from app.schemas.user import UserPublic
 from app.services import appointment_service, professional_service, store_service
@@ -36,12 +36,38 @@ async def list_my_appointments(
     return await appointment_service.list_client_appointments(db, current_user)
 
 
+@router.get("/professional-appointments", response_model=list[AppointmentPublic])
+async def list_my_professional_appointments(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(RoleEnum.professional)),
+):
+    professional = await professional_service.get_my_profile(db, current_user)
+    return await appointment_service.list_professional_appointments(db, professional.id, current_user)
+
+
 @router.get("/professional-stores", response_model=list[ProfessionalStorePublic])
 async def list_my_professional_stores(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     return await professional_service.list_user_professional_stores(db, current_user)
+
+
+@router.get("/professional", response_model=ProfessionalPublic)
+async def get_my_professional_profile(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await professional_service.get_my_profile(db, current_user)
+
+
+@router.patch("/professional", response_model=ProfessionalPublic)
+async def update_my_professional_profile(
+    data: ProfessionalUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(RoleEnum.professional, RoleEnum.store_admin)),
+):
+    return await professional_service.update_my_profile(db, data, current_user)
 
 
 @router.get("/professionals", response_model=list[ProfessionalWithStorePublic])

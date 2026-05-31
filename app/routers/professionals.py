@@ -9,6 +9,7 @@ from app.schemas.professional import (
     ProfessionalSelfCreate,
     ProfessionalStorePublic,
     ProfessionalUpdate,
+    ProfessionalWithNamePublic,
 )
 from app.services import professional_service
 
@@ -29,9 +30,9 @@ async def add_admin_as_professional(
     return await professional_service.add_admin_as_professional(db, store_id, data, admin)
 
 
-@router.get("", response_model=list[ProfessionalPublic])
+@router.get("", response_model=list[ProfessionalWithNamePublic])
 async def list_store_professionals(store_id: str, db: AsyncSession = Depends(get_db)):
-    return await professional_service.list_store_professionals(db, store_id)
+    return await professional_service.list_store_professionals_with_name(db, store_id)
 
 
 @router.patch("/{professional_id}", response_model=ProfessionalPublic)

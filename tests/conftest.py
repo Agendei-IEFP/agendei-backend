@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.pool import NullPool
 
@@ -12,12 +13,20 @@ from app.models.mixins import Base
 _engine = create_async_engine(settings.database_url_test, poolclass=NullPool)
 
 
-@pytest.fixture(autouse=True)
-async def reset_database():
-    """Drop and recreate all tables before each test for full isolation."""
+@pytest.fixture(scope="session", autouse=True)
+async def create_tables():
+    async with _engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+
+
+@pytest.fixture(autouse=True)
+async def reset_database():
+    table_names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    async with _engine.begin() as conn:
+        await conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
 
 
 @pytest.fixture
