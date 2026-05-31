@@ -344,9 +344,9 @@ VALID_SERVICE = {
 }
 
 
-async def _setup_store_with_offering(client: AsyncClient, admin_token: str) -> tuple[str, str]:
+async def _setup_store_with_offering(client: AsyncClient, admin_token: str) -> tuple[str, str, str]:
     """Creates a store, adds admin as professional, creates a service and an offering.
-    Returns (store_id, professional_store_id).
+    Returns (store_id, professional_store_id, offering_id).
     """
     store_resp = await client.post(
         BASE_URL,
@@ -378,12 +378,13 @@ async def _setup_store_with_offering(client: AsyncClient, admin_token: str) -> t
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert offering_resp.status_code == 201
+    offering_id = offering_resp.json()["id"]
 
-    return store_id, professional_store_id
+    return store_id, professional_store_id, offering_id
 
 
 async def test_list_store_offerings_happy_path(client: AsyncClient, admin_token: str):
-    store_id, _ = await _setup_store_with_offering(client, admin_token)
+    store_id, _, _ = await _setup_store_with_offering(client, admin_token)
     response = await client.get(f"{BASE_URL}/{store_id}/offerings")
     assert response.status_code == 200
     body = response.json()
@@ -413,12 +414,7 @@ async def test_list_store_offerings_not_found(client: AsyncClient):
 
 
 async def test_list_store_offerings_disabled_not_shown(client: AsyncClient, admin_token: str):
-    store_id, professional_store_id = await _setup_store_with_offering(client, admin_token)
-
-    # Get the offering id
-    offerings_resp = await client.get(f"{PROF_STORES_URL}/{professional_store_id}/offerings")
-    assert offerings_resp.status_code == 200
-    offering_id = offerings_resp.json()[0]["id"]
+    store_id, professional_store_id, offering_id = await _setup_store_with_offering(client, admin_token)
 
     # Disable the offering
     patch_resp = await client.patch(
