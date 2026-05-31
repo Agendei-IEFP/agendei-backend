@@ -21,7 +21,7 @@ class NotificationType(str, Enum):
 
 class NotificationStatus(str, Enum):
     pending = "pending"
-    retrying = "retrying"
+    processing = "processing"
     scheduled = "scheduled"
     sent = "sent"
     failed = "failed"
@@ -43,12 +43,12 @@ class Notification(Base, ULIDMixin, TimestampMixin):
     __tablename__ = "notifications"
 
     notification_type: Mapped[NotificationType] = mapped_column(
-    SAEnum(NotificationType),
+    SAEnum(NotificationType, name="notificationtype", create_type=True),
     nullable=False,
     ) # se é de marcação, cancelamento, avaliacao
 
     channel: Mapped[NotificationChannel] = mapped_column(
-        SAEnum(NotificationChannel),
+        SAEnum(NotificationChannel, name="notificationchannel", create_type=True),
         nullable=False,
     ) # whats, email, etc
 
@@ -57,8 +57,13 @@ class Notification(Base, ULIDMixin, TimestampMixin):
         nullable=False,
     ) # Quem vai receber a notificação
 
+    recipient_contact: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )  # email, telefone, etc
+
     recipient_type: Mapped[RecipientType] = mapped_column(
-        SAEnum(RecipientType),
+        SAEnum(RecipientType, name="recipientType", create_type=True),
         nullable=False,
     ) # proficional ou customer
 
@@ -79,7 +84,7 @@ class Notification(Base, ULIDMixin, TimestampMixin):
     ) # mensagem da notificação
 
     status: Mapped[NotificationStatus] = mapped_column(
-        SAEnum(NotificationStatus),
+        SAEnum(NotificationStatus, name="notificationStatus", create_type=True),
         nullable=False,
         default=NotificationStatus.pending,
     ) # estatus

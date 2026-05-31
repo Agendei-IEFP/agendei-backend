@@ -13,6 +13,7 @@ from app.models.notification import (
 class NotificationBase(BaseModel):
     notification_type: NotificationType
     channel: NotificationChannel
+    recipient_contact: str
     recipient_id: str
     recipient_type: RecipientType
     appointment_id: Optional[str] = None

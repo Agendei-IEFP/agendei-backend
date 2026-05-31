@@ -1,10 +1,15 @@
 from celery import shared_task
-from datetime import datetime, timezone
-from sqlalchemy import update
+from datetime import datetime, timezone, UTC
+from app.worker.celery_app import celery
+from sqlalchemy import update, or_
 
-from app.db.session import SessionLocal
+from app.db.session import SyncSessionLocal as SessionLocal
 from app.models.notification import Notification, NotificationStatus, NotificationChannel
 from app.channels.email import send_email
+from app.models.appointment import Appointment  # noqa: F401
+from app.models.user import User             # noqa: F401
+from app.models.professional import Professional             # noqa: F401
+
 
 
 CHANNEL_HANDLERS = {
@@ -14,10 +19,12 @@ CHANNEL_HANDLERS = {
 }
 
 
-@shared_task(name="app.worker.tasks.dispatch_pending_notifications")
+@celery.task(name="app.worker.tasks.dispatch_pending_notifications")
 def dispatch_pending_notifications():
     db = SessionLocal()
     now = datetime.now(timezone.utc)
+    print(now)
+    print("Aaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
     try:
         result = db.execute(
             update(Notification)
@@ -26,11 +33,15 @@ def dispatch_pending_notifications():
                     NotificationStatus.pending,
                     NotificationStatus.scheduled,
                 ]),
-                Notification.scheduled_at <= now,
+                or_(
+                    Notification.scheduled_at.is_(None),   # ← envio imediato
+                    Notification.scheduled_at <= now,
+                ),
                 Notification.attempts < Notification.max_attempts,
             )
-            .values(status=NotificationStatus.retrying)
+            .values(status=NotificationStatus.processing)  # ← nome mais claro
             .returning(Notification.id)
+            .execution_options(synchronize_session=False)
         )
         ids = result.scalars().all()
         db.commit()
@@ -38,22 +49,31 @@ def dispatch_pending_notifications():
         for notification_id in ids:
             process_notification.delay(str(notification_id))
 
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
-@shared_task(
+@celery.task(
     name="app.worker.tasks.process_notification",
     bind=True,
     max_retries=3,
 )
 def process_notification(self, notification_id: str):
     db = SessionLocal()
-    notification = None
     try:
         notification = db.get(Notification, notification_id)
 
         if not notification:
+            return
+
+        if notification.scheduled_at > datetime.now(UTC):
+            return  # ainda não é hora
+
+        # Protecção: evita reprocessar se já foi enviado por outro worker
+        if notification.status == NotificationStatus.sent:
             return
 
         handler = CHANNEL_HANDLERS.get(notification.channel)
@@ -65,25 +85,36 @@ def process_notification(self, notification_id: str):
             subject=notification.title,
             body=notification.message,
         )
+        print(notification.recipient_contact)
 
+        # Sucesso — incrementa e marca como enviado
         notification.attempts += 1
         notification.status = NotificationStatus.sent
         notification.sent_at = datetime.now(timezone.utc)
+        notification.error_message = None
+        db.commit()
 
     except Exception as exc:
+        db.rollback()
+
+        # Recarrega após rollback para não trabalhar com estado sujo
+        notification = db.get(Notification, notification_id)
         if notification:
             notification.attempts += 1
             notification.error_message = str(exc)
+            exhausted = notification.attempts >= notification.max_attempts
+
             notification.status = (
                 NotificationStatus.failed
-                if notification.attempts >= notification.max_attempts
-                else NotificationStatus.scheduled
+                if exhausted
+                else NotificationStatus.scheduled  # Beat vai reapanhá-la
             )
-        if notification and notification.status == NotificationStatus.scheduled:
-            raise self.retry(
-                exc=exc,
-                countdown=60 * (2 ** self.request.retries),  # backoff: 60s, 120s, 240s
-            )
+            db.commit()
+
+            if not exhausted:
+                raise self.retry(
+                    exc=exc,
+                    countdown=60 * (2 ** self.request.retries),  # 60s, 120s, 240s
+                )
     finally:
-        db.commit()
         db.close()
