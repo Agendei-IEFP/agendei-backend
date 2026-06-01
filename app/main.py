@@ -19,7 +19,7 @@ from app.routers.appointments import router as appointments_router
 from app.routers.invites import router as invites_router
 from app.routers.me import router as me_router
 from app.routers.notifications import router as notification_router
-
+from app.worker.celery_app import celery  # noqa: F401
 app = FastAPI(
     title="Agendei API",
     description="Sistema de agendamentos para salões",

@@ -13,10 +13,27 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agendei -d agendei_dev"]
+      test: [ "CMD-SHELL", "pg_isready -U agendei -d agendei_dev" ]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  pgadmin:
+    container_name: pgadmin-agendei
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+  redis:
+    image: redis:7-alpine
+    container_name: redis-agendei
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
 volumes:
   pgdata:

@@ -4,12 +4,12 @@ beat_schedule = {
     # Envio imediato continua a cada 60s
     "dispatch-scheduled-notifications": {
         "task": "app.worker.tasks.dispatch_pending_notifications",
-        "schedule": 1.0,
+        "schedule": 60.0,
     },
 
     # Verificação diária às 08:00
     "daily-pending-check": {
         "task": "app.worker.tasks.dispatch_pending_notifications",
-        "schedule": crontab( minute="*"),
+        "schedule": crontab(hour=8, minute=0),
     },
 }
