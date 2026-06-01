@@ -1,5 +1,5 @@
 from celery import shared_task
-from datetime import datetime, timezone, UTC
+from datetime import datetime, timezone
 from app.worker.celery_app import celery
 from sqlalchemy import update, or_
 
@@ -7,8 +7,8 @@ from app.db.session import SyncSessionLocal as SessionLocal
 from app.models.notification import Notification, NotificationStatus, NotificationChannel
 from app.channels.email import send_email
 from app.models.appointment import Appointment  # noqa: F401
-from app.models.user import User             # noqa: F401
-from app.models.professional import Professional             # noqa: F401
+from app.models.user import User # noqa: F401
+from app.models.professional import Professional  # noqa: F401
 
 
 
@@ -24,7 +24,7 @@ def dispatch_pending_notifications():
     db = SessionLocal()
     now = datetime.now(timezone.utc)
     print(now)
-    print("Aaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    print("aaaaain")
     try:
         result = db.execute(
             update(Notification)
@@ -69,7 +69,7 @@ def process_notification(self, notification_id: str):
         if not notification:
             return
 
-        if notification.scheduled_at > datetime.now(UTC):
+        if notification.scheduled_at > datetime.now(timezone.utc):
             return  # ainda não é hora
 
         # Protecção: evita reprocessar se já foi enviado por outro worker
