@@ -19,12 +19,35 @@ from app.routers.appointments import router as appointments_router
 from app.routers.invites import router as invites_router
 from app.routers.me import router as me_router
 from app.routers.notifications import router as notification_router
-from app.worker.celery_app import celery  # noqa: F401
+#from app.worker.celery_app import celery  # noqa: F401
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from app.task.email_service import scan_and_send_reminders
+from contextlib import asynccontextmanager
+
+
+scheduler = AsyncIOScheduler()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    #Inicia a task
+    scheduler.add_job(scan_and_send_reminders, "interval", minutes=1)
+    scheduler.start()
+    print("Scheduler iniciado")
+
+    yield  # A aplicação corre aqui
+
+    #Finaliza a task
+    scheduler.shutdown()
+    print("scheduler finalizado")
+
 app = FastAPI(
     title="Agendei API",
     description="Sistema de agendamentos para salões",
     version="0.4.0",
+    lifespan=lifespan
 )
+
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
@@ -46,6 +69,8 @@ async def custom_exception_handler(request: Request, exc: RateLimitExceeded):
             "route": request.url.path
         }
     )
+
+
 
 PREFIX = "/api/v1"
 
