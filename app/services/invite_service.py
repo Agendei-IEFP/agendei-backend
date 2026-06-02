@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core import security
 from app.core.config import settings
@@ -37,7 +38,7 @@ async def create_invite(
     db.add(invite)
     await db.commit()
 
-    url = f"{settings.frontend_url}/convite/{token}"
+    url = f"{settings.frontend_url}/invite/{token}"
     return InviteCreatedResponse(token=token, url=url, expires_at=expires_at)
 
 
@@ -102,7 +103,13 @@ async def accept_invite(
     invite.used_at = datetime.now(timezone.utc)
     invite.accepted_user_id = user.id
     await db.commit()
-    await db.refresh(link)
+
+    result = await db.execute(
+        select(ProfessionalStore)
+        .options(selectinload(ProfessionalStore.store))
+        .where(ProfessionalStore.id == link.id)
+    )
+    link = result.scalar_one()
 
     return InviteAcceptResponse(
         professional_store=link,

@@ -1,22 +1,86 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.store import Store
+from app.models.offering import Offering
+from app.models.professional_store import ProfessionalStore
+from app.models.service import Service
+from app.models.store import Store, StoreType
 from app.models.user import User
-from app.schemas.store import StoreCreate, StoreUpdate
+from app.schemas.store import StoreCreate, StoreOfferingPublic, StorePublic, StoreUpdate
 
 
-async def list_stores(db: AsyncSession) -> list[Store]:
-    result = await db.execute(
-        select(Store).where(
-            Store.deleted_at.is_(None),
-            Store.is_active.is_(True),
+async def list_stores(
+    db: AsyncSession, store_type: StoreType | None = None
+) -> list[StorePublic]:
+    # Cria uma subquery para ser usada dentro do execute abaixo
+    professional_count_sq = (
+        select(func.count(ProfessionalStore.id))
+        .where(
+            ProfessionalStore.store_id == Store.id,
+            ProfessionalStore.deleted_at.is_(None),
         )
+        .correlate(Store) # É o comando usado para dizer "Esse STORE não pertence a essa query, mas sim do query pai usada abaixo no execute"
+        .scalar_subquery() # Transforma o select numa subquery que retorna um único valor
     )
-    return result.scalars().all()
+    # Cria uma subquery para ser usada dentro do execute abaixo
+    service_count_sq = (
+        select(func.count(Offering.id))
+        .join(ProfessionalStore, Offering.professional_store_id == ProfessionalStore.id)
+        .where(
+            ProfessionalStore.store_id == Store.id,
+            Offering.is_enabled.is_(True),
+            Offering.deleted_at.is_(None),
+            ProfessionalStore.deleted_at.is_(None),
+        )
+        .correlate(Store)
+        .scalar_subquery()
+    )
+
+    filters = [
+        Store.deleted_at.is_(None),
+        Store.is_active.is_(True),
+    ]
+    if store_type is not None:
+        filters.append(Store.store_type == store_type)
+
+    result = await db.execute(
+        select(
+            Store,
+            professional_count_sq.label("professional_count"),
+            service_count_sq.label("service_count"),
+        ).where(*filters)
+    )
+
+    # Alternativa mais curta — evita listar todos os campos manualmente:
+    # return [
+    #     StorePublic.model_validate(store).model_copy(
+    #         update={"professional_count": prof_count, "service_count": svc_count}
+    #     )
+    #     for store, prof_count, svc_count in result.all()
+    # ]
+    return [
+        StorePublic(
+            id=store.id,
+            owner_id=store.owner_id,
+            name=store.name,
+            description=store.description,
+            phone=store.phone,
+            email=store.email,
+            address=store.address,
+            logo_url=store.logo_url,
+            is_active=store.is_active,
+            store_type=store.store_type,
+            created_at=store.created_at,
+            updated_at=store.updated_at,
+            professional_count=prof_count,
+            service_count=svc_count,
+        )
+        for store, prof_count, svc_count in result.all()
+    ]
 
 
 async def list_my_stores(db: AsyncSession, owner_id: str) -> list[Store]:
@@ -49,10 +113,10 @@ async def create_store(db: AsyncSession, data: StoreCreate, owner_id: str) -> St
 
 
 async def update_store(
-    db: AsyncSession,
-    store_id: str,
-    data: StoreUpdate,
-    current_user: User,
+        db: AsyncSession,
+        store_id: str,
+        data: StoreUpdate,
+        current_user: User,
 ) -> Store:
     store = await get_store(db, store_id)
     if store.owner_id != current_user.id:
@@ -65,12 +129,51 @@ async def update_store(
 
 
 async def delete_store(
-    db: AsyncSession,
-    store_id: str,
-    current_user: User,
+        db: AsyncSession,
+        store_id: str,
+        current_user: User,
 ) -> None:
     store = await get_store(db, store_id)
     if store.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Acesso negado")
     store.deleted_at = datetime.now(timezone.utc)
     await db.commit()
+
+
+async def list_store_offerings(db: AsyncSession, store_id: str) -> list[StoreOfferingPublic]:
+    await get_store(db, store_id)
+
+    result = await db.execute(
+        select(
+            Service.id.label("service_id"),
+            Service.name.label("service_name"),
+            func.min(
+                func.coalesce(Offering.price_override, Service.default_price)
+            ).label("effective_price"),
+            func.min(
+                func.coalesce(Offering.duration_override, Service.default_duration_minutes)
+            ).label("effective_duration_minutes"),
+        )
+        .join(Offering, Offering.service_id == Service.id)
+        .join(ProfessionalStore, ProfessionalStore.id == Offering.professional_store_id)
+        .where(
+            ProfessionalStore.store_id == store_id,
+            ProfessionalStore.deleted_at.is_(None),
+            ProfessionalStore.is_active.is_(True),
+            Offering.is_enabled.is_(True),
+            Offering.deleted_at.is_(None),
+            Service.deleted_at.is_(None),
+        )
+        .group_by(Service.id, Service.name)
+        .order_by(Service.name)
+    )
+    rows = result.mappings().all()
+    return [
+        StoreOfferingPublic(
+            service_id=row["service_id"],
+            service_name=row["service_name"],
+            effective_price=row["effective_price"],
+            effective_duration_minutes=row["effective_duration_minutes"],
+        )
+        for row in rows
+    ]

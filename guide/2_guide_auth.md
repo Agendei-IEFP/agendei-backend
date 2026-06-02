@@ -1,98 +1,108 @@
-# Phase 2 — Authentication Guide
+# Guia da Fase 2 — Autenticação
 
-This guide explains everything built in Phase 2 of the backend. It assumes you understand basic web concepts (HTTP, cookies, passwords) but not necessarily how FastAPI or this project works internally.
-
----
-
-## The Problem This Phase Solves
-
-After Phase 1, the database existed but anyone could call any endpoint and do anything. There was no concept of "who is making this request" or "is this person allowed to do this."
-
-Authentication answers: **who are you?**
-Authorization answers: **what are you allowed to do?**
-
-Phase 2 builds both.
+Este guia explica o que foi construído na Fase 2, por que cada decisão foi tomada
+e como tudo se conecta. Escrito para quem lê este código pela primeira vez.
 
 ---
 
-## The Big Picture — How Auth Works Here
+## O problema que esta fase resolve
 
-The system uses two tokens:
+Após a Fase 1, o banco existia mas qualquer pessoa podia chamar qualquer endpoint
+e fazer qualquer coisa. Não havia conceito de "quem está a fazer este pedido" ou
+"esta pessoa tem permissão para fazer isto".
 
-**Access token** — a short-lived JWT (15 minutes). The frontend stores it in memory (a JavaScript variable). It's sent in the `Authorization` header on every API request.
+Autenticação responde: **quem és tu?**
+Autorização responde: **o que podes fazer?**
 
-**Refresh token** — a long-lived JWT (7 days). Stored in an httpOnly cookie, which means JavaScript can't read it — only the browser sends it automatically. It's only used to get a new access token when the old one expires.
-
-Think of it like a building security system:
-- The **access token** is your daily visitor badge — valid for a few hours, lets you through most doors.
-- The **refresh token** is the master key you keep in a locked safe — you only use it to get a new visitor badge, never to open doors directly.
-
-This split exists because:
-- If someone steals your access token, it expires in 15 minutes and becomes useless.
-- If someone steals your refresh token... that's more serious, but the cookie flags (`httpOnly`, `SameSite=Strict`) make it very hard to steal in the first place.
+A Fase 2 constrói as duas.
 
 ---
 
-## File Map
+## O panorama geral — como a autenticação funciona
+
+O sistema usa dois tokens:
+
+**Access token** — um JWT de curta duração (15 minutos). O frontend guarda-o em
+memória (uma variável JavaScript). É enviado no header `Authorization` em cada
+pedido à API.
+
+**Refresh token** — um JWT de longa duração (7 dias). Guardado num cookie
+`httpOnly`, o que significa que o JavaScript não o consegue ler — só o browser o
+envia automaticamente. É usado apenas para obter um novo access token quando o
+anterior expira.
+
+Pensa nisto como um sistema de segurança de um edifício:
+- O **access token** é o teu crachá diário de visitante — válido por algumas
+  horas, dá acesso à maioria das portas.
+- O **refresh token** é a chave-mestra que guardas num cofre — só a usas para
+  obter um novo crachá, nunca para abrir portas diretamente.
+
+---
+
+## Mapa de decisões
+
+| Decisão | Alternativa rejeitada | Razão |
+|---|---|---|
+| Dois tokens (access + refresh) | Um único token de longa duração | Token roubado expira em 15min; refresh é protegido por cookie httpOnly |
+| Refresh token em cookie `httpOnly` | localStorage / sessionStorage | JavaScript não consegue ler cookies httpOnly — protege contra XSS |
+| `samesite="strict"` no cookie | `samesite="lax"` ou sem flag | Impede CSRF — um site malicioso não consegue acionar `/refresh` silenciosamente |
+| `path` do cookie = `/api/v1/auth/refresh` | `path="/"` | O token só viaja quando é necessário — reduz a superfície de ataque |
+| `bcrypt` diretamente | `passlib` | `passlib` quebrou com bcrypt >= 4.x por remover `__about__` |
+| Mesma mensagem de erro para email/password errados | Mensagens distintas | Impede enumeração — um atacante não consegue saber se o email existe |
+| 409 para email duplicado | 400 | 409 "Conflict" é semanticamente correto — o pedido é válido mas conflitua com estado existente |
+| Buscar o utilizador no banco em cada pedido | Confiar apenas no JWT | Token válido não garante que a conta ainda existe ou não foi apagada |
+| `require_role` retorna uma função (closure) | Função direta com role hardcoded | Os roles são parâmetros — a closure "lembra" os roles com que foi criada |
+| 401 vs 403 distintos | Usar sempre 401 | 401 = não identificado; 403 = identificado mas sem permissão |
+
+---
+
+## Mapa de ficheiros
 
 ```
 backend/
-├── .env                          ← environment variables (secrets, config)
 └── app/
     ├── core/
-    │   ├── config.py             ← reads .env into Python
-    │   ├── security.py           ← password hashing, JWT creation/decoding
-    │   └── dependencies.py       ← get_current_user, require_role
+    │   ├── config.py          → lê .env para Python (inclui settings de JWT)
+    │   ├── security.py        → hash de passwords, criação/descodificação de JWTs
+    │   └── dependencies.py    → get_current_user, require_role
     ├── schemas/
-    │   ├── usuario.py            ← what a user looks like in API responses
-    │   └── auth.py               ← request/response shapes for auth endpoints
+    │   ├── user.py            → como um utilizador aparece nas respostas da API
+    │   └── auth.py            → shapes de pedido/resposta para os endpoints de auth
     ├── services/
-    │   └── auth_service.py       ← business logic (register, login, refresh)
+    │   └── auth_service.py    → lógica de negócio (register, login, refresh)
     ├── routers/
-    │   └── auth.py               ← the actual HTTP endpoints
-    └── main.py                   ← app entry point, wires everything together
+    │   └── auth.py            → os endpoints HTTP
+    └── main.py                → ponto de entrada, regista tudo
 ```
 
 ---
 
-## 1. Environment Variables — `.env`
+## 1. Variáveis de ambiente — `.env`
 
 ```
-JWT_SECRET=7625d894fc30f...      # secret key used to sign tokens
-JWT_ALGORITHM=HS256              # signing algorithm
-JWT_EXPIRATION_MINUTES=15        # access token lives 15 minutes
-REFRESH_TOKEN_EXPIRE_DAYS=7      # refresh token lives 7 days
-ALLOWED_ORIGINS=["http://localhost:5173"]   # which frontends can call the API
-CURRENT_TERMS_VERSION=1.0        # version of terms of service users accept
+JWT_SECRET=7625d894fc30f...         # chave secreta para assinar os tokens
+JWT_ALGORITHM=HS256                 # algoritmo de assinatura
+JWT_EXPIRATION_MINUTES=15           # access token dura 15 minutos
+REFRESH_TOKEN_EXPIRE_DAYS=7         # refresh token dura 7 dias
+ALLOWED_ORIGINS=["http://localhost:5173"]   # frontends autorizados a chamar a API
+CURRENT_TERMS_VERSION=1.0           # versão dos termos que os utilizadores aceitam
 ```
 
-**Why a `JWT_SECRET`?** JWTs are not encrypted — anyone can decode them and read the contents. But they are *signed*. The signature proves the token was created by your server and hasn't been tampered with. The secret is what makes the signature trustworthy. If the secret leaks, attackers can forge valid tokens.
+> **Decisão — `JWT_SECRET` como variável de ambiente:**
+> JWTs não são encriptados — qualquer pessoa pode descodificá-los e ler o
+> conteúdo. Mas são *assinados*. A assinatura prova que o token foi criado pelo
+> teu servidor e não foi adulterado. O segredo é o que torna a assinatura
+> confiável. Se vazar, atacantes conseguem forjar tokens válidos.
 
-**Why `ALLOWED_ORIGINS` instead of `"*"`?** CORS (Cross-Origin Resource Sharing) is a browser security mechanism. When the frontend on `localhost:5173` calls the API on `localhost:8000`, the browser first checks: "is this API willing to talk to this frontend?" The API answers by listing allowed origins. Using `"*"` (any origin) with cookies is actually rejected by browsers — you have to be explicit.
+> **Decisão — `ALLOWED_ORIGINS` explícito em vez de `"*"`:**
+> CORS é um mecanismo de segurança do browser. Quando o frontend em
+> `localhost:5173` chama a API em `localhost:8000`, o browser verifica primeiro
+> se a API aceita falar com esse frontend. Usar `"*"` (qualquer origem) com
+> cookies é rejeitado pelos browsers — tens de ser explícito.
 
 ---
 
-## 2. Settings — `app/core/config.py`
-
-```python
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
-
-    jwt_secret: str
-    jwt_algorithm: str
-    jwt_expiration_minutes: int
-    refresh_token_expire_days: int
-    allowed_origins: list[str]
-    current_terms_version: str
-```
-
-**What this does:** Pydantic reads the `.env` file and maps each variable to a typed Python field. If a variable is missing or the wrong type, the app crashes immediately on startup with a clear error — not silently later when the field is first accessed.
-
-**Note about `list[str]`:** Pydantic-settings expects list values in the `.env` file as JSON: `ALLOWED_ORIGINS=["http://localhost:5173"]`. A plain comma-separated string will fail to parse.
-
----
-
-## 3. Password Hashing and JWTs — `app/core/security.py`
+## 2. Hash de passwords e JWTs — `app/core/security.py`
 
 ```python
 import bcrypt
@@ -105,11 +115,22 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 ```
 
-**Why not store passwords directly?** If the database leaks, attackers get every user's password — and since people reuse passwords, they now own those users' accounts everywhere. Hashing transforms `"senha123"` into something like `"$2b$12$ZAwiv9..."` that can't be reversed. The only way to check a password is to hash it again and compare.
+> **Decisão — nunca guardar passwords em texto simples:**
+> Se o banco vazar, os atacantes obtêm a password de cada utilizador — e como as
+> pessoas reutilizam passwords, passam a controlar as contas desses utilizadores
+> em todo o lado. O hash transforma `"senha123"` em algo como `"$2b$12$ZAwiv9..."`
+> que não pode ser invertido. A única forma de verificar uma password é fazer o
+> hash novamente e comparar.
 
-**Why bcrypt specifically?** bcrypt is intentionally slow — it takes ~100ms to hash one password. That sounds bad, but it means an attacker trying to crack a leaked hash has to wait 100ms per guess instead of nanoseconds. Cracking a million hashes goes from seconds to years.
+> **Decisão — `bcrypt` diretamente em vez de `passlib`:**
+> O `passlib` é uma biblioteca popular que envolve o bcrypt, mas quebrou com
+> versões bcrypt >= 4.x (procurava um atributo `__about__` que foi removido).
+> Usar `bcrypt` diretamente evita esta fragilidade.
 
-**Why not use `passlib`?** `passlib` is a popular library that wraps bcrypt, but it broke with bcrypt versions 4.x and above (it looked for an `__about__` attribute that was removed). Using `bcrypt` directly sidesteps this fragility.
+> **Decisão — bcrypt é intencionalmente lento (~100ms por hash):**
+> Isso parece mau, mas significa que um atacante a tentar quebrar um hash
+> vazado tem de esperar 100ms por tentativa em vez de nanosegundos. Quebrar um
+> milhão de hashes passa de segundos para anos.
 
 ```python
 def create_access_token(data: dict) -> str:
@@ -126,58 +147,67 @@ def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
 ```
 
-**What's inside a JWT?** A JWT is three base64-encoded sections separated by dots: header, payload, signature. The payload here looks like:
+O que está dentro de um JWT:
 
 ```json
 {
   "sub": "01KP7XSEVGPGPK4HV69P7TENZG",
-  "role": "cliente",
+  "role": "client",
   "exp": 1776236012
 }
 ```
 
-`sub` (subject) is the user's ID. **It carries the ID, not the email**, because emails can change — IDs can't.
+`sub` (subject) é o ID do utilizador.
 
-`exp` is a Unix timestamp. `decode_token` automatically raises an error if `exp` is in the past.
+> **Decisão — JWT carrega o ID, não o email:**
+> Emails podem mudar — IDs não. Um token com email ficaria inválido se o
+> utilizador mudasse o email.
 
-**Why two separate functions for access vs refresh?** The only difference is the TTL. Having two functions makes it explicit and prevents accidentally creating a 7-day access token.
+`exp` é um timestamp Unix. `decode_token` lança automaticamente um erro se `exp`
+estiver no passado.
+
+> **Decisão — duas funções separadas para access vs refresh:**
+> A única diferença é o TTL. Ter duas funções torna isso explícito e evita criar
+> acidentalmente um access token de 7 dias.
 
 ---
 
-## 4. Schemas — `app/schemas/`
+## 3. Schemas — `app/schemas/`
 
-Schemas define the shape of data going in and out of the API. They are Pydantic models — they validate, coerce, and document the data contract.
-
-### `schemas/usuario.py`
+### `schemas/user.py`
 
 ```python
-class UsuarioPublic(BaseModel):
+class UserPublic(BaseModel):
     id: str
-    nome: str
+    name: str
     email: str
     role: RoleEnum
 
     model_config = ConfigDict(from_attributes=True)
 ```
 
-**Why not just return the full `Usuario` model?** The database model has `senha_hash`, `accepted_terms_at`, `anonymized_at`, and other internal fields. You never want to expose these in a response. `UsuarioPublic` is a whitelist — only these four fields go to the frontend.
+> **Decisão — `UserPublic` separado do modelo SQLAlchemy:**
+> O modelo de banco tem `password_hash`, `accepted_terms_at`, `anonymized_at` e
+> outros campos internos. Nunca os deves expor numa resposta. `UserPublic` é uma
+> whitelist — só estes quatro campos chegam ao frontend.
 
-**What is `from_attributes=True`?** By default Pydantic only reads data from dictionaries. `from_attributes=True` lets it read from SQLAlchemy model objects too, accessing fields as attributes (`usuario.id`) instead of keys (`data["id"]`).
+`from_attributes=True` permite ao Pydantic ler de objetos SQLAlchemy (acedendo
+atributos como `user.id`) em vez de apenas de dicionários.
 
 ### `schemas/auth.py`
 
 ```python
 class RegisterRequest(BaseModel):
-    nome: str
+    name: str
     email: EmailStr
-    senha: str
+    password: str
     role: RoleEnum
-    telefone: str | None = None
+    phone: str | None = None
     accepted_terms: bool
 
-    @field_validator("senha")
+    @field_validator("password")
     @classmethod
-    def senha_min_length(cls, v: str) -> str:
+    def password_min_length(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("A senha deve ter no mínimo 8 caracteres")
         return v
@@ -190,70 +220,84 @@ class RegisterRequest(BaseModel):
         return v
 ```
 
-**What is `EmailStr`?** A Pydantic type that validates email format. It requires the `email-validator` package to be installed (`pydantic[email]`). If you just use `str`, you'd accept `"not_an_email"` as a valid address.
+> **Decisão — `EmailStr` em vez de `str` para o email:**
+> `EmailStr` valida o formato do email. Requer o pacote `email-validator`
+> (`pydantic[email]`). Sem ele, `"não_é_um_email"` seria aceite como válido.
 
-**What is `@field_validator`?** A hook that runs after Pydantic parses the field. If it raises `ValueError`, Pydantic converts it into a `422 Unprocessable Entity` response with a descriptive error message. No manual `if` checks in the endpoint needed.
-
-**Why validate `accepted_terms` instead of just checking on the frontend?** Frontend validation is for user experience, not security. Any request can be crafted manually (curl, Postman, scripts). Backend validation is the real enforcement.
+> **Decisão — `@field_validator` em vez de validação no endpoint:**
+> Quando um validador lança `ValueError`, o Pydantic converte-o automaticamente
+> numa resposta `422 Unprocessable Entity` com mensagem descritiva. Sem
+> necessidade de `if` manuais no endpoint. Validação no frontend é para UX —
+> não é segurança. Qualquer pedido pode ser construído manualmente (curl, Postman,
+> scripts). A validação no backend é a barreira real.
 
 ```python
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    user: UsuarioPublic
+    user: UserPublic
 ```
 
-**Why include `user` in the login response?** The frontend needs to know the user's role immediately after login to decide where to redirect: a `cliente` goes to the booking flow, a `profissional` goes to the dashboard, an `admin_loja` goes to the store panel. Without the user object, the frontend would have to decode the JWT itself (possible but messy) or make a second request.
+> **Decisão — incluir `user` na resposta de login:**
+> O frontend precisa de saber o role do utilizador imediatamente após o login para
+> decidir para onde redirecionar: um `client` vai para o fluxo de agendamento, um
+> `professional` vai para o dashboard, um `store_admin` vai para o painel da loja.
+> Sem o objeto user, o frontend teria de descodificar o JWT ou fazer um segundo
+> pedido.
 
 ---
 
-## 5. Business Logic — `app/services/auth_service.py`
+## 4. Lógica de negócio — `app/services/auth_service.py`
 
-The service layer holds the core logic — what actually happens when someone registers or logs in. Critically, **none of these functions use `Depends()`** — they receive everything they need as regular parameters.
+A camada de serviços tem a lógica central. Crucialmente, **nenhuma destas funções
+usa `Depends()`** — recebem tudo como parâmetros normais.
 
 ```python
-async def register(db: AsyncSession, data: RegisterRequest) -> Usuario:
+async def register(db: AsyncSession, data: RegisterRequest) -> User:
     result = await db.execute(
-        select(Usuario).where(
-            Usuario.email == data.email,
-            Usuario.deleted_at.is_(None),
+        select(User).where(
+            User.email == data.email,
+            User.deleted_at.is_(None),
         )
     )
     if result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Email já cadastrado")
-
-    usuario = Usuario(
-        ...
-        senha_hash=security.hash_password(data.senha),
-        accepted_terms_at=datetime.now(timezone.utc),
-        accepted_terms_version=settings.current_terms_version,
-    )
-    db.add(usuario)
-    await db.commit()
-    await db.refresh(usuario)
-    return usuario
+    ...
 ```
 
-**Why `deleted_at.is_(None)` on the email check?** The project uses soft deletes — no row is ever physically removed from the database. A "deleted" user still has a row, just with `deleted_at` set. Without this filter, a user who deleted their account couldn't register again with the same email.
+> **Decisão — `deleted_at.is_(None)` na verificação de email:**
+> O projeto usa soft deletes — nenhuma linha é alguma vez removida fisicamente.
+> Um utilizador "apagado" ainda tem uma linha, apenas com `deleted_at` preenchido.
+> Sem este filtro, um utilizador que apagou a conta não conseguia registar-se
+> novamente com o mesmo email.
 
-**Why store `accepted_terms_version`?** GDPR and consumer protection laws require you to prove a user accepted your terms, and which version they accepted. If you update the terms later, you may need to re-ask users who accepted the old version.
-
-**Why 409 for duplicate email?** HTTP 409 means "Conflict" — the request is valid but conflicts with existing state. It's more precise than 400 (bad request). The frontend can catch specifically 409 and show "this email is already registered."
+> **Decisão — guardar `accepted_terms_version`:**
+> O RGPD e as leis de proteção ao consumidor exigem que se prove que o utilizador
+> aceitou os termos, e qual versão. Se os termos forem atualizados mais tarde,
+> pode ser necessário pedir novamente aos utilizadores que aceitaram a versão
+> antiga.
 
 ```python
-async def login(db: AsyncSession, data: LoginRequest) -> tuple[str, str, Usuario]:
+async def login(db: AsyncSession, data: LoginRequest) -> tuple[str, str, User]:
     ...
-    if usuario is None or not security.verify_password(data.senha, usuario.senha_hash):
+    if user is None or not security.verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
 ```
 
-**Why the same error message whether the email doesn't exist or the password is wrong?** This is deliberate security design. If you returned "email not found" for a wrong email and "wrong password" for a wrong password, an attacker could enumerate which emails are registered by just trying emails and watching the error. With a single generic message, they get no information either way.
+> **Decisão — mesma mensagem de erro para email não encontrado e password errada:**
+> Deliberado por segurança. Se retornasses "email não encontrado" para um email
+> errado e "password errada" para uma password errada, um atacante conseguia
+> enumerar quais emails estão registados apenas observando os erros. Com uma
+> mensagem genérica, não obtém nenhuma informação.
 
-**Why `tuple[str, str, Usuario]`?** The function returns three things at once — the access token, the refresh token, and the user object. The router needs all three: the tokens to send back, the user to build the response. Returning a tuple avoids creating a throwaway dataclass.
+> **Decisão — retornar `tuple[str, str, User]`:**
+> A função retorna três coisas de uma vez — o access token, o refresh token, e
+> o objeto user. O router precisa das três: os tokens para enviar, o user para
+> construir a resposta. Um tuple evita criar uma dataclass descartável.
 
 ---
 
-## 6. Dependencies — `app/core/dependencies.py`
+## 5. Dependências — `app/core/dependencies.py`
 
 ```python
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -261,7 +305,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
-) -> Usuario:
+) -> User:
     credentials_exception = HTTPException(
         status_code=401,
         detail="Token inválido ou expirado",
@@ -277,64 +321,61 @@ async def get_current_user(
         raise credentials_exception
 
     result = await db.execute(
-        select(Usuario).where(
-            Usuario.id == user_id,
-            Usuario.deleted_at.is_(None),
+        select(User).where(
+            User.id == user_id,
+            User.deleted_at.is_(None),
         )
     )
-    usuario = result.scalar_one_or_none()
-    if usuario is None:
+    user = result.scalar_one_or_none()
+    if user is None:
         raise credentials_exception
 
-    return usuario
+    return user
 ```
 
-**What is `Depends()`?** FastAPI's dependency injection. Instead of calling `get_current_user()` manually in every endpoint, you write `user = Depends(get_current_user)` in the function signature and FastAPI calls it automatically, passing the result as the argument. This is how you protect an endpoint — add the dependency and the endpoint becomes unreachable without a valid token.
+> **Decisão — buscar o utilizador no banco em cada pedido:**
+> O JWT sozinho diz o ID do utilizador. Mas e se o utilizador foi apagado depois
+> de o token ter sido emitido? O token continuaria a ser tecnicamente válido. Ir
+> buscar ao banco e aplicar `deleted_at.is_(None)` resolve isto — uma conta
+> apagada não consegue usar um token ainda válido.
 
-**What is `OAuth2PasswordBearer`?** A helper that reads the `Authorization: Bearer <token>` header from the request and extracts the token string. It also tells the Swagger UI (`/docs`) to show a lock icon and an "Authorize" button for that endpoint.
+> **Decisão — `OAuth2PasswordBearer` em vez de ler o header manualmente:**
+> Lê o header `Authorization: Bearer <token>` e extrai o token. Também diz ao
+> Swagger UI (`/docs`) para mostrar um cadeado e um botão "Authorize" nesse
+> endpoint.
 
-**Why look up the user in the database on every request?** The JWT alone tells you the user's ID. But what if the user was deleted after the token was issued? The token would still be technically valid. Fetching from the database and applying `deleted_at.is_(None)` catches this — a deleted account can't use a still-valid token.
-
-**Why `WWW-Authenticate: Bearer` in the error headers?** This is the HTTP standard for telling a client "you need to authenticate, and I accept Bearer tokens." Some clients and tools use this header to automatically prompt for credentials.
+> **Decisão — `WWW-Authenticate: Bearer` no header de erro:**
+> É o standard HTTP para dizer ao cliente "precisas de autenticar, e aceito
+> Bearer tokens". Alguns clientes e ferramentas usam este header para solicitar
+> credenciais automaticamente.
 
 ```python
 def require_role(*roles: RoleEnum):
     def role_checker(
-        current_user: Usuario = Depends(get_current_user),
-    ) -> Usuario:
+        current_user: User = Depends(get_current_user),
+    ) -> User:
         if current_user.role not in roles:
             raise HTTPException(status_code=403, detail="Acesso negado")
         return current_user
     return role_checker
 ```
 
-**What problem does `require_role` solve?** `get_current_user` only verifies that someone is logged in. `require_role` verifies they have the right permission level. Future endpoints will use it like this:
+> **Decisão — `require_role` retorna uma função em vez de ser uma função direta:**
+> Como os roles são parâmetros (`require_role(RoleEnum.store_admin)`), não
+> hardcoded, a função exterior captura o argumento `roles` e retorna a função
+> interior `role_checker` que o FastAPI vai injetar. É uma closure — `role_checker`
+> "lembra" os `roles` com que foi criada.
 
-```python
-# Only store admins can access this
-@router.get("/admin/lojas")
-async def list_stores(user = Depends(require_role(RoleEnum.admin_loja))):
-    ...
-
-# Both professionals and admins can access this
-@router.get("/agendamentos")
-async def list_appointments(user = Depends(require_role(RoleEnum.profissional, RoleEnum.admin_loja))):
-    ...
-```
-
-**Why does `require_role` return a function instead of being a function itself?** Because the roles are parameters (`require_role(RoleEnum.admin_loja)`), not hard-coded. The outer function captures the roles argument and returns the inner `role_checker` function that FastAPI will actually inject. This is a closure — `role_checker` "remembers" the `roles` it was created with.
-
-The difference between 401 and 403:
-- **401 Unauthorized** — "I don't know who you are." No valid token.
-- **403 Forbidden** — "I know who you are, but you can't do this." Wrong role.
+> **Decisão — 401 vs 403 distintos:**
+> - **401 Unauthorized** — "Não sei quem és." Sem token válido.
+> - **403 Forbidden** — "Sei quem és, mas não podes fazer isto." Role errado.
+> Usar sempre 401 perderia esta distinção semântica importante.
 
 ---
 
-## 7. The Endpoints — `app/routers/auth.py`
+## 6. Os endpoints — `app/routers/auth.py`
 
 ```python
-router = APIRouter(prefix="/auth", tags=["auth"])
-
 _COOKIE_PATH = "/api/v1/auth/refresh"
 _COOKIE_MAX_AGE = settings.refresh_token_expire_days * 86400
 
@@ -343,45 +384,54 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         key="refresh_token",
         value=token,
         httponly=True,
-        secure=False,     # True in production
+        secure=False,     # True em produção
         samesite="strict",
         max_age=_COOKIE_MAX_AGE,
         path=_COOKIE_PATH,
     )
 ```
 
-**What does each cookie flag do?**
+O que cada flag do cookie faz e por que importa:
 
-| Flag | What it prevents |
-|------|-----------------|
-| `httponly=True` | JavaScript on the page cannot read this cookie. Protects against XSS attacks that try to steal tokens. |
-| `secure=True` | Browser only sends cookie over HTTPS. Prevents interception on plain HTTP. Set `False` in dev since localhost doesn't have HTTPS. |
-| `samesite="strict"` | Browser only sends cookie when the request originated from your own site. Prevents CSRF attacks — a malicious site can't silently trigger a `/refresh` call. |
-| `path="/api/v1/auth/refresh"` | Browser only attaches this cookie to requests to that exact path. Without this, the cookie would go on every single API call. |
+| Flag | O que previne |
+|------|--------------|
+| `httponly=True` | JavaScript na página não consegue ler este cookie. Protege contra ataques XSS que tentam roubar tokens. |
+| `secure=True` | O browser só envia o cookie via HTTPS. Previne intercepção em HTTP simples. `False` em dev porque localhost não tem HTTPS. |
+| `samesite="strict"` | O browser só envia o cookie quando o pedido vem do teu próprio site. Previne ataques CSRF — um site malicioso não consegue acionar `/refresh` silenciosamente. |
+| `path="/api/v1/auth/refresh"` | O browser só anexa este cookie a pedidos para esse caminho exato. |
 
-**Why does `path` matter so much?** If the cookie path were `/`, the refresh token would be sent on every request — `GET /lojas`, `GET /servicos`, everything. That broadens the attack surface for no reason. Scoping it to `/api/v1/auth/refresh` means the token only travels when it needs to.
+> **Decisão — `path` do cookie restrito a `/api/v1/auth/refresh`:**
+> Se o path fosse `/`, o refresh token seria enviado em todos os pedidos —
+> `GET /stores`, `GET /offerings`, tudo. Isso alarga a superfície de ataque sem
+> razão. Limitar ao `/api/v1/auth/refresh` significa que o token só viaja quando
+> é necessário.
 
 ```python
-@router.post("/register", response_model=UsuarioPublic, status_code=201)
+@router.post("/register", response_model=UserPublic, status_code=201)
 async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    usuario = await auth_service.register(db, data)
-    return usuario
+    user = await auth_service.register(db, data)
+    return user
 ```
 
-`response_model=UsuarioPublic` tells FastAPI to filter the returned object through `UsuarioPublic` before sending the response. Even if `auth_service.register` returns a full `Usuario` with `senha_hash` and everything, only the four fields in `UsuarioPublic` go out. It's a safety net.
+`response_model=UserPublic` diz ao FastAPI para filtrar o objeto retornado através
+de `UserPublic` antes de enviar a resposta. Mesmo que `auth_service.register`
+retorne um `User` completo com `password_hash` e tudo, só os campos de `UserPublic`
+saem. É uma rede de segurança.
 
 ```python
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
-    access_token, refresh_token, usuario = await auth_service.login(db, data)
+    access_token, refresh_token, user = await auth_service.login(db, data)
     _set_refresh_cookie(response, refresh_token)
     return TokenResponse(
         access_token=access_token,
-        user=UsuarioPublic.model_validate(usuario),
+        user=UserPublic.model_validate(user),
     )
 ```
 
-`response: Response` is injected by FastAPI to let you modify the HTTP response — set headers, cookies, status codes — without losing the ability to also return a body. The `set_cookie` call here is what tells the browser to store the refresh token.
+`response: Response` é injetado pelo FastAPI para permitir modificar a resposta
+HTTP — definir headers, cookies, status codes — sem perder a capacidade de também
+retornar um body.
 
 ```python
 @router.post("/refresh", response_model=TokenResponse)
@@ -390,12 +440,18 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token ausente")
 
-    new_access_token, usuario = await auth_service.refresh(db, refresh_token)
-    _set_refresh_cookie(response, refresh_token)  # re-set to renew TTL
+    new_access_token, user = await auth_service.refresh(db, refresh_token)
+    _set_refresh_cookie(response, refresh_token)  # re-define para renovar o TTL
     return TokenResponse(...)
 ```
 
-The refresh endpoint reads the cookie from the incoming request (`request.cookies.get()`), validates it, and issues a new access token. It also re-sets the cookie — this resets the cookie's TTL in the browser. Without this, the cookie would expire 7 days after the original login, even if the user is active every day.
+O endpoint de refresh lê o cookie do pedido, valida-o, e emite um novo access
+token. Re-define também o cookie — isto renova o TTL do cookie no browser.
+
+> **Decisão — re-definir o cookie no refresh:**
+> Sem isto, o cookie expiraria 7 dias após o login original, mesmo que o
+> utilizador esteja ativo todos os dias. Re-definir o cookie renova o TTL a
+> cada refresh — um utilizador ativo nunca é forçado a fazer login novamente.
 
 ```python
 @router.post("/logout", status_code=204)
@@ -409,17 +465,24 @@ async def logout(response: Response):
     )
 ```
 
-**Important:** `delete_cookie` works by sending a `Set-Cookie` header with `Max-Age=0`, which tells the browser to immediately expire the cookie. The flags (`path`, `httponly`, `samesite`, `secure`) must be identical to the original `set_cookie` call. If they don't match, the browser doesn't recognize it as the same cookie and ignores the delete instruction — the user appears logged out on the frontend but the refresh token cookie survives.
+> **Decisão — flags idênticas no `delete_cookie` e no `set_cookie`:**
+> `delete_cookie` funciona enviando um header `Set-Cookie` com `Max-Age=0`, o que
+> diz ao browser para expirar imediatamente o cookie. As flags (`path`, `httponly`,
+> `samesite`, `secure`) têm de ser idênticas à chamada `set_cookie` original. Se
+> não corresponderem, o browser não reconhece como o mesmo cookie e ignora a
+> instrução de apagar — o utilizador parece desligado no frontend mas o refresh
+> token sobrevive.
 
-**Why 204 and no body?** HTTP 204 means "success, no content." Logout doesn't need to return anything — there's nothing to say. Returning an empty `{}` would technically work but 204 is the semantically correct status.
+> **Decisão — 204 sem body no logout:**
+> HTTP 204 significa "sucesso, sem conteúdo". O logout não precisa de retornar
+> nada. Retornar `{}` funcionaria tecnicamente, mas 204 é o status semanticamente
+> correto.
 
 ---
 
-## 8. The App Entry Point — `app/main.py`
+## 7. Ponto de entrada — `app/main.py`
 
 ```python
-app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -427,90 +490,74 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+```
 
+> **Decisão — `allow_credentials=True` é obrigatório com cookies:**
+> Sem isto, o browser remove cookies dos pedidos cross-origin. Como o refresh
+> token vive num cookie, esta configuração é obrigatória. O trade-off: com
+> `allow_credentials=True` não podes usar `allow_origins=["*"]` — os browsers
+> rejeitam essa combinação por razões de segurança.
+
+```python
 app.include_router(auth_router.router, prefix="/api/v1")
 ```
 
-**What is middleware?** Code that runs on every request before it reaches your endpoints and after the response leaves them. CORS middleware intercepts every request and adds the appropriate CORS headers to the response.
-
-**Why `allow_credentials=True`?** Without this, the browser strips cookies from cross-origin requests. Since the refresh token lives in a cookie, this setting is mandatory. The trade-off: `allow_credentials=True` is why you can't use `allow_origins=["*"]` — browsers reject that combination for security reasons.
-
-**What does `app.include_router(auth_router.router, prefix="/api/v1")` do?** The router defines its own prefix (`/auth`), and `main.py` adds `/api/v1` on top. The resulting paths are:
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/refresh`
-- `POST /api/v1/auth/logout`
-
-The `v1` prefix lets you version your API later — if you make breaking changes, you create a `/api/v2` without removing v1, so old clients don't break.
+O router define o seu próprio prefix (`/auth`) e o `main.py` adiciona `/api/v1`
+por cima. O prefixo `v1` permite versionar a API mais tarde — se forem feitas
+alterações incompatíveis, cria-se `/api/v2` sem remover a v1, para que clientes
+antigos não se partam.
 
 ---
 
-## 9. Why This Layer Structure?
+## 8. Por que esta estrutura em camadas?
 
-The code is split into four layers — router, service, security, schema — and this isn't just organization preference. Each layer has a specific job:
+O código está dividido em quatro camadas — router, service, security, schema —
+e não é apenas preferência de organização. Cada camada tem um trabalho específico:
 
-| Layer | Job | Knows about |
-|-------|-----|-------------|
-| `schemas/` | Define data shapes, validate input | Pydantic, nothing else |
-| `core/security.py` | Cryptographic operations | bcrypt, JWT libraries |
-| `services/` | Business logic and database queries | SQLAlchemy, schemas, security |
-| `routers/` | HTTP: parse requests, set cookies, return responses | FastAPI, services, schemas |
+| Camada | Trabalho | Conhece |
+|--------|----------|---------|
+| `schemas/` | Define shapes de dados, valida input | Pydantic, nada mais |
+| `core/security.py` | Operações criptográficas | bcrypt, bibliotecas JWT |
+| `services/` | Lógica de negócio e queries ao banco | SQLAlchemy, schemas, security |
+| `routers/` | HTTP: parseia pedidos, define cookies, retorna respostas | FastAPI, services, schemas |
 
-**The key consequence:** `auth_service.py` receives a `db: AsyncSession` as a plain parameter, not via `Depends(get_db)`. This means you can call it in tests without starting a FastAPI app — just pass a database session directly. Services that depend on `Depends()` can only run inside a request context.
-
----
-
-## 10. The Token Flow End-to-End
-
-Here's what happens from the user's perspective and what's happening in the code at each step:
-
-```
-User opens app → frontend calls POST /auth/refresh
-  ↓ no cookie yet → 401
-  ↓ frontend shows /login page
-
-User submits email + password → POST /auth/login
-  ↓ service looks up user in DB
-  ↓ service verifies bcrypt hash
-  ↓ service creates access token (15min) + refresh token (7 days)
-  ↓ router: access token goes in JSON body
-  ↓ router: refresh token goes in Set-Cookie header (httpOnly)
-  ↓ frontend stores access token in Zustand (memory)
-  ↓ browser stores refresh token in cookie automatically
-
-User navigates around → frontend sends access token in Authorization header
-  ↓ get_current_user() decodes it, finds user in DB, returns user
-  ↓ endpoint runs normally
-
-15 minutes pass → access token expires
-  ↓ next API call returns 401
-  ↓ frontend's Axios interceptor catches 401
-  ↓ frontend calls POST /auth/refresh (cookie sent automatically)
-  ↓ service validates refresh token, issues new access token
-  ↓ frontend retries original request with new token
-  ↓ user never notices anything
-
-User clicks logout → POST /auth/logout
-  ↓ router clears cookie via Set-Cookie: Max-Age=0
-  ↓ frontend clears Zustand store
-  ↓ no cookie → next refresh call returns 401 → login page
-```
+> **Decisão — services recebem `db: AsyncSession` como parâmetro, não via `Depends`:**
+> Isto significa que podes chamá-los em testes sem iniciar uma app FastAPI — basta
+> passar uma sessão de banco diretamente. Services que dependem de `Depends()` só
+> podem correr dentro de um contexto de pedido.
 
 ---
 
-## What Comes Next
+## 9. O fluxo de tokens do início ao fim
 
-Phase 2 built the authentication foundation. Every future endpoint that needs to be protected uses the tools created here:
-
-```python
-# Any future endpoint can now do this:
-from app.core.dependencies import get_current_user, require_role
-
-@router.get("/minhas-lojas")
-async def my_stores(user: Usuario = Depends(require_role(RoleEnum.admin_loja))):
-    # user is already fetched, validated, and role-checked
-    # just write the business logic
-    ...
 ```
+Utilizador abre a app → frontend chama POST /auth/refresh
+  ↓ sem cookie ainda → 401
+  ↓ frontend mostra página de login
 
-Phase 3 builds on this: CRUD for lojas, profissionais, serviços, horários, agendamentos — and the availability slot algorithm.
+Utilizador submete email + password → POST /auth/login
+  ↓ service procura utilizador no banco
+  ↓ service verifica hash bcrypt
+  ↓ service cria access token (15min) + refresh token (7 dias)
+  ↓ router: access token vai no body JSON
+  ↓ router: refresh token vai no header Set-Cookie (httpOnly)
+  ↓ frontend guarda access token em memória (Zustand)
+  ↓ browser guarda refresh token no cookie automaticamente
+
+Utilizador navega → frontend envia access token no header Authorization
+  ↓ get_current_user() descodifica-o, encontra utilizador no banco, retorna-o
+  ↓ endpoint corre normalmente
+
+15 minutos passam → access token expira
+  ↓ próxima chamada à API retorna 401
+  ↓ interceptor Axios do frontend apanha o 401
+  ↓ frontend chama POST /auth/refresh (cookie enviado automaticamente)
+  ↓ service valida refresh token, emite novo access token
+  ↓ frontend repete o pedido original com o novo token
+  ↓ o utilizador nunca dá conta de nada
+
+Utilizador clica em logout → POST /auth/logout
+  ↓ router limpa o cookie via Set-Cookie: Max-Age=0
+  ↓ frontend limpa o store Zustand
+  ↓ sem cookie → próxima chamada a refresh retorna 401 → página de login
+```

@@ -53,14 +53,21 @@ async def get_optional_user(
     try:
         payload = security.decode_token(token)
     except JWTError:
-        return None
+        raise HTTPException(
+            status_code=401,
+            detail="Token inválido ou expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     user_id: str | None = payload.get("sub")
     if not user_id:
-        return None
+        raise HTTPException(status_code=401, detail="Token inválido")
     result = await db.execute(
         select(User).where(User.id == user_id, User.deleted_at.is_(None))
     )
-    return result.scalar_one_or_none()
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    return user
 
 
 def require_role(*roles: RoleEnum):

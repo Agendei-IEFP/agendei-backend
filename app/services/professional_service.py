@@ -3,11 +3,13 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.professional import Professional
 from app.models.professional_store import ProfessionalStore
+from app.models.store import Store
 from app.models.user import User
-from app.schemas.professional import ProfessionalSelfCreate, ProfessionalUpdate
+from app.schemas.professional import ProfessionalSelfCreate, ProfessionalUpdate, ProfessionalWithNamePublic
 from app.services.store_service import get_store
 
 
@@ -96,8 +98,13 @@ async def add_admin_as_professional(
         db.add(link)
 
     await db.commit()
-    await db.refresh(link)
-    return link
+
+    result = await db.execute(
+        select(ProfessionalStore)
+        .options(selectinload(ProfessionalStore.store))
+        .where(ProfessionalStore.id == link.id)
+    )
+    return result.scalar_one()
 
 
 async def list_store_professionals(
@@ -118,6 +125,35 @@ async def list_store_professionals(
         )
     )
     return list(result.scalars().all())
+
+
+async def list_store_professionals_with_name(
+    db: AsyncSession, store_id: str
+) -> list[ProfessionalWithNamePublic]:
+    await get_store(db, store_id)
+    result = await db.execute(
+        select(
+            Professional.id,
+            Professional.user_id,
+            User.name,
+            Professional.bio,
+            Professional.photo_url,
+            Professional.is_active,
+        )
+        .join(User, User.id == Professional.user_id)
+        .join(
+            ProfessionalStore,
+            ProfessionalStore.professional_id == Professional.id,
+        )
+        .where(
+            ProfessionalStore.store_id == store_id,
+            ProfessionalStore.deleted_at.is_(None),
+            ProfessionalStore.is_active.is_(True),
+            Professional.deleted_at.is_(None),
+        )
+    )
+    rows = result.mappings().all()
+    return [ProfessionalWithNamePublic(**dict(row)) for row in rows]
 
 
 async def update_professional(
@@ -180,10 +216,70 @@ async def list_user_professional_stores(
         return []
 
     result = await db.execute(
-        select(ProfessionalStore).where(
+        select(ProfessionalStore)
+        .options(selectinload(ProfessionalStore.store))
+        .where(
             ProfessionalStore.professional_id == professional.id,
             ProfessionalStore.deleted_at.is_(None),
             ProfessionalStore.is_active.is_(True),
         )
     )
     return list(result.scalars().all())
+
+
+async def get_my_profile(db: AsyncSession, user: User) -> Professional:
+    result = await db.execute(
+        select(Professional).where(
+            Professional.user_id == user.id,
+            Professional.deleted_at.is_(None),
+        )
+    )
+    professional = result.scalar_one_or_none()
+    if professional is None:
+        raise HTTPException(status_code=404, detail="Perfil de profissional não encontrado")
+    return professional
+
+
+async def update_my_profile(
+    db: AsyncSession, data: ProfessionalUpdate, user: User
+) -> Professional:
+    professional = await get_my_profile(db, user)
+
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(professional, field, value)
+
+    await db.commit()
+    await db.refresh(professional)
+    return professional
+
+
+async def list_my_professionals(
+    db: AsyncSession, admin: User
+) -> list[dict]:
+    result = await db.execute(
+        select(
+            Professional.id,
+            Professional.user_id,
+            User.name,
+            Professional.bio,
+            Professional.photo_url,
+            Professional.is_active,
+            ProfessionalStore.store_id,
+            Store.name.label("store_name"),
+        )
+        .join(User, User.id == Professional.user_id)
+        .join(
+            ProfessionalStore,
+            ProfessionalStore.professional_id == Professional.id,
+        )
+        .join(Store, Store.id == ProfessionalStore.store_id)
+        .where(
+            Store.owner_id == admin.id,
+            Store.deleted_at.is_(None),
+            ProfessionalStore.deleted_at.is_(None),
+            ProfessionalStore.is_active.is_(True),
+            Professional.deleted_at.is_(None),
+        )
+    )
+    rows = result.mappings().all()
+    return [dict(row) for row in rows]

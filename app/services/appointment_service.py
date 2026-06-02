@@ -8,6 +8,7 @@ from app.models.appointment import Appointment, StatusEnum
 from app.models.professional import Professional
 from app.models.professional_store import ProfessionalStore
 from app.models.store import Store
+from app.models.store_availability import StoreAvailability
 from app.models.user import User
 from app.models.work_schedule import WorkSchedule
 from app.schemas.appointment import AppointmentCreate, AppointmentUpdate, AvailableSlot
@@ -28,15 +29,19 @@ async def list_available_slots(
     """
     Returns all free slots for a (professional, store) link on a given day.
 
-    1. Fetch the WorkSchedule for that link and weekday. If absent, return [].
+    1. Fetch all active WorkSchedule blocks for that link and weekday.
+       If none, return [].
     2. Fetch all conflicting appointments for that PROFESSIONAL (across every
        store they work in) — a busy slot anywhere blocks it everywhere.
-    3. From the shift start, walk in offering-duration steps, dropping slots
-       that collide with existing appointments.
+    3. For each block, walk a fixed 10-minute grid. A slot is offered only if
+       the full service duration fits within the block (no crossing pauses)
+       and doesn't collide with existing appointments.
 
-    Because we store ends_at on Appointment, the collision check is just:
+    Because we store ends_at on Appointment, the collision check is:
         new_start < existing_end AND new_end > existing_start
     """
+    SLOT_GRID_MINUTES = 10
+
     link = await get_professional_store(db, professional_store_id)
     offering = await get_offering(db, offering_id)
     if offering.professional_store_id != professional_store_id:
@@ -46,15 +51,31 @@ async def list_available_slots(
         )
 
     weekday = query_date.weekday()  # 0=Monday, 6=Sunday
-    result_schedule = await db.execute(
-        select(WorkSchedule).where(
-            WorkSchedule.professional_store_id == professional_store_id,
-            WorkSchedule.weekday == weekday,
-            WorkSchedule.is_active.is_(True),
-        )
+
+    # Use StoreAvailability overrides when present; fall back to base WorkSchedule
+    result_overrides = await db.execute(
+        select(StoreAvailability).where(
+            StoreAvailability.professional_store_id == professional_store_id,
+            StoreAvailability.weekday == weekday,
+            StoreAvailability.deleted_at.is_(None),
+            StoreAvailability.is_active.is_(True),
+        ).order_by(StoreAvailability.start_time)
     )
-    schedule = result_schedule.scalar_one_or_none()
-    if schedule is None:
+    override_blocks = list(result_overrides.scalars().all())
+
+    if override_blocks:
+        blocks = override_blocks
+    else:
+        result_schedules = await db.execute(
+            select(WorkSchedule).where(
+                WorkSchedule.professional_store_id == professional_store_id,
+                WorkSchedule.weekday == weekday,
+                WorkSchedule.is_active.is_(True),
+            ).order_by(WorkSchedule.start_time)
+        )
+        blocks = list(result_schedules.scalars().all())
+
+    if not blocks:
         return []
 
     day_start = datetime.combine(query_date, time.min).replace(tzinfo=timezone.utc)
@@ -70,20 +91,24 @@ async def list_available_slots(
     )
     booked = list(result_appointments.scalars().all())
 
-    duration = timedelta(minutes=offering.duration_minutes)
-    slots: list[AvailableSlot] = []
-    cursor = datetime.combine(query_date, schedule.start_time).replace(tzinfo=timezone.utc)
-    shift_end = datetime.combine(query_date, schedule.end_time).replace(tzinfo=timezone.utc)
+    effective_duration = offering.duration_override if offering.duration_override is not None else offering.service.default_duration_minutes
+    duration = timedelta(minutes=effective_duration)
+    grid_step = timedelta(minutes=SLOT_GRID_MINUTES)
     now = datetime.now(timezone.utc)
+    slots: list[AvailableSlot] = []
 
-    while cursor + duration <= shift_end:
-        slot_start = cursor
-        slot_end = cursor + duration
+    for block in blocks:
+        cursor = datetime.combine(query_date, block.start_time).replace(tzinfo=timezone.utc)
+        block_end = datetime.combine(query_date, block.end_time).replace(tzinfo=timezone.utc)
 
-        if slot_start > now and not _collides(slot_start, slot_end, booked):
-            slots.append(AvailableSlot(start=slot_start, end=slot_end))
+        while cursor + duration <= block_end:
+            slot_start = cursor
+            slot_end = cursor + duration
 
-        cursor += duration
+            if slot_start > now and not _collides(slot_start, slot_end, booked):
+                slots.append(AvailableSlot(start=slot_start, end=slot_end))
+
+            cursor += grid_step
 
     return slots
 
@@ -131,7 +156,8 @@ async def create_appointment(
     if starts_at.tzinfo is None:
         starts_at = starts_at.replace(tzinfo=timezone.utc)
 
-    ends_at = starts_at + timedelta(minutes=offering.duration_minutes)
+    effective_duration = offering.duration_override if offering.duration_override is not None else offering.service.default_duration_minutes
+    ends_at = starts_at + timedelta(minutes=effective_duration)
 
     # Final conflict check across every store this professional works in.
     conflict = await db.execute(
