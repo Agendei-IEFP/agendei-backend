@@ -37,6 +37,7 @@ class ProfessionalWithNamePublic(BaseModel):
     bio: str | None
     photo_url: str | None
     is_active: bool
+    professional_store_id: str
 
 
 class ProfessionalStorePublic(BaseModel):
