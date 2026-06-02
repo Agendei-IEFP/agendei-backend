@@ -14,30 +14,28 @@ from app.core.dependencies import get_current_user
 from app.models.notification import NotificationStatus, RecipientType, Notification
 from app.limiter.limiter import limiter
 from sqlalchemy.orm import Session
-from app.worker.tasks import process_notification
+#from app.worker.tasks import process_notification
 
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
-
-
-@router.post("/notifications", status_code=202)
-async def create_notification(
-    payload: NotificationCreate,
-    db: Session = Depends(get_db),
-):
-    notif = Notification(**payload.model_dump())
-    db.add(notif)
-    await db.commit()
-    await db.refresh(notif)
-
-    process_notification.delay(str(notif.id))
-    # Envio imediato — sem scheduled_at
-    if notif.scheduled_at is None:
-        process_notification.delay(str(notif.id))
-
-    # Com scheduled_at — o Beat trata disso; não enfileira agora
-    return {"id": str(notif.id), "status": notif.status}
+# @router.post("/notifications", status_code=202)
+# async def create_notification(
+#     payload: NotificationCreate,
+#     db: Session = Depends(get_db),
+# ):
+#     notif = Notification(**payload.model_dump())
+#     db.add(notif)
+#     await db.commit()
+#     await db.refresh(notif)
+#
+#     process_notification.delay(str(notif.id))
+#     # Envio imediato — sem scheduled_at
+#     if notif.scheduled_at is None:
+#         process_notification.delay(str(notif.id))
+#
+#     # Com scheduled_at — o Beat trata disso; não enfileira agora
+#     return {"id": str(notif.id), "status": notif.status}
 
 # @router.post(
 #     "",

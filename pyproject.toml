@@ -21,6 +21,7 @@ dependencies = [
     "aiosmtplib>=5.1.0",
     "celery>=5.6.3",
     "celery-types>=0.26.0",
+    "apscheduler>=3.11.2",
 ]
 
 [dependency-groups]
