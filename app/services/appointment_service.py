@@ -3,15 +3,17 @@ from datetime import datetime, date, timedelta, timezone, time
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.appointment import Appointment, StatusEnum
+from app.models.offering import Offering
 from app.models.professional import Professional
 from app.models.professional_store import ProfessionalStore
 from app.models.store import Store
 from app.models.store_availability import StoreAvailability
 from app.models.user import User
 from app.models.work_schedule import WorkSchedule
-from app.schemas.appointment import AppointmentCreate, AppointmentUpdate, AvailableSlot
+from app.schemas.appointment import AppointmentClientPublic, AppointmentCreate, AppointmentUpdate, AvailableSlot
 from app.services.offering_service import get_offering
 from app.services.professional_service import get_professional, get_professional_store
 
@@ -199,6 +201,49 @@ async def list_client_appointments(
         ).order_by(Appointment.starts_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def list_client_appointments_detailed(
+    db: AsyncSession, client: User
+) -> list[AppointmentClientPublic]:
+    result = await db.execute(
+        select(Appointment)
+        .where(
+            Appointment.client_id == client.id,
+            Appointment.deleted_at.is_(None),
+        )
+        .options(
+            selectinload(Appointment.offering).selectinload(Offering.service),
+            selectinload(Appointment.professional_store).selectinload(ProfessionalStore.store),
+            selectinload(Appointment.professional).selectinload(Professional.user),
+        )
+        .order_by(Appointment.starts_at.desc())
+    )
+    appointments = list(result.scalars().all())
+
+    items = []
+    for apt in appointments:
+        offering = apt.offering
+        service = offering.service if offering else None
+        prof_store = apt.professional_store
+        store = prof_store.store if prof_store else None
+        professional = apt.professional
+
+        items.append(AppointmentClientPublic(
+            id=apt.id,
+            starts_at=apt.starts_at,
+            ends_at=apt.ends_at,
+            status=apt.status,
+            notes=apt.notes,
+            cancelled_by=apt.cancelled_by,
+            cancellation_reason=apt.cancellation_reason,
+            service_name=service.name if service else None,
+            professional_name=professional.user.name if professional and professional.user else None,
+            store_name=store.name if store else None,
+            effective_price=offering.price_override if offering and offering.price_override is not None else (service.default_price if service else None),
+            effective_duration_minutes=offering.duration_override if offering and offering.duration_override is not None else (service.default_duration_minutes if service else None),
+        ))
+    return items
 
 
 async def list_professional_appointments(
