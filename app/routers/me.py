@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.models.user import RoleEnum, User
-from app.schemas.appointment import AppointmentPublic
+from app.schemas.appointment import AppointmentClientPublic, AppointmentPublic
 from app.schemas.professional import ProfessionalPublic, ProfessionalStorePublic, ProfessionalUpdate, ProfessionalWithStorePublic
 from app.schemas.store import StorePublic
-from app.schemas.user import UserPublic
-from app.services import appointment_service, professional_service, store_service
+from app.schemas.user import UserPublic, UserUpdate
+from app.services import appointment_service, professional_service, store_service, user_service
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -20,6 +20,24 @@ async def get_my_user(
     return current_user
 
 
+@router.patch("/user", response_model=UserPublic)
+async def update_my_user(
+    data: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await user_service.update_user(db, current_user, data)
+
+
+@router.delete("/user", status_code=204)
+async def delete_my_user(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await user_service.delete_user(db, current_user)
+    return Response(status_code=204)
+
+
 @router.get("/stores", response_model=list[StorePublic])
 async def list_my_stores(
     db: AsyncSession = Depends(get_db),
@@ -28,12 +46,12 @@ async def list_my_stores(
     return await store_service.list_my_stores(db, current_user.id)
 
 
-@router.get("/appointments", response_model=list[AppointmentPublic])
+@router.get("/appointments", response_model=list[AppointmentClientPublic])
 async def list_my_appointments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await appointment_service.list_client_appointments(db, current_user)
+    return await appointment_service.list_client_appointments_detailed(db, current_user)
 
 
 @router.get("/professional-appointments", response_model=list[AppointmentPublic])
