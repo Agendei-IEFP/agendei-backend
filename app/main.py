@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -19,10 +21,9 @@ from app.routers.appointments import router as appointments_router
 from app.routers.invites import router as invites_router
 from app.routers.me import router as me_router
 from app.routers.notifications import router as notification_router
-#from app.worker.celery_app import celery  # noqa: F401
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from app.task.email_service import scan_and_send_reminders
+from app.task.email_service import scan_and_send_reminders, delete_sent_notifications_job
 from contextlib import asynccontextmanager
 
 
@@ -32,7 +33,9 @@ scheduler = AsyncIOScheduler()
 async def lifespan(app: FastAPI):
     #Inicia a task
     scheduler.add_job(scan_and_send_reminders, "interval", minutes=1)
+    scheduler.add_job(delete_sent_notifications_job, "cron", day_of_week="sun", hour=3, minute=0)
     scheduler.start()
+    print(datetime.now())
     print("Scheduler iniciado")
 
     yield  # A aplicação corre aqui

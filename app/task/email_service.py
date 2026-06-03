@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import update, or_
+from sqlalchemy import update, or_, text
 from app.db.session import get_db, AsyncSession
 from app.models.notification import Notification, NotificationStatus, NotificationChannel
 from app.channels.email import send_email
@@ -13,7 +13,6 @@ CHANNEL_HANDLERS = {
 async def scan_and_send_reminders():
     async for db in get_db():
         now = datetime.now(timezone.utc)
-
         result = await db.execute(
             update(Notification)
             .where(
@@ -79,4 +78,10 @@ async def process_notification(db: AsyncSession, notification_id: str):
             else:
                 notification.status = NotificationStatus.scheduled
 
+        await db.commit()
+
+
+async def delete_sent_notifications_job():
+    async for db in get_db():
+        await db.execute(text("SELECT delete_sent_notifications();"))
         await db.commit()
