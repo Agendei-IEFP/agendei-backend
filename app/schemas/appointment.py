@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -35,6 +36,21 @@ class AppointmentPublic(BaseModel):
     cancelled_by: str | None
     cancellation_reason: str | None
     reminder_sent: bool
+
+
+class AppointmentClientPublic(BaseModel):
+    id: str
+    starts_at: datetime
+    ends_at: datetime
+    status: StatusEnum
+    notes: str | None
+    cancelled_by: str | None
+    cancellation_reason: str | None
+    service_name: str | None
+    professional_name: str | None
+    store_name: str | None
+    effective_price: Decimal | None
+    effective_duration_minutes: int | None
 
 
 class AvailableSlot(BaseModel):

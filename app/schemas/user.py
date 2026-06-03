@@ -5,6 +5,12 @@ from pydantic import BaseModel, ConfigDict
 from app.models.user import RoleEnum
 
 
+class UserUpdate(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+
+
 class UserPublic(BaseModel):
     id: str
     name: str
