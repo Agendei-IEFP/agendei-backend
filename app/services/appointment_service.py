@@ -88,7 +88,7 @@ async def list_available_slots(
             Appointment.professional_id == link.professional_id,
             Appointment.starts_at >= day_start,
             Appointment.starts_at <= day_end,
-            Appointment.status.in_([StatusEnum.pending, StatusEnum.confirmed]),
+            Appointment.status == StatusEnum.confirmed,
         )
     )
     booked = list(result_appointments.scalars().all())
@@ -165,7 +165,7 @@ async def create_appointment(
     conflict = await db.execute(
         select(Appointment).where(
             Appointment.professional_id == link.professional_id,
-            Appointment.status.in_([StatusEnum.pending, StatusEnum.confirmed]),
+            Appointment.status == StatusEnum.confirmed,
             Appointment.starts_at < ends_at,
             Appointment.ends_at > starts_at,
         )
@@ -183,7 +183,7 @@ async def create_appointment(
         offering_id=data.offering_id,
         starts_at=starts_at,
         ends_at=ends_at,
-        status=StatusEnum.pending,
+        status=StatusEnum.confirmed,
     )
     db.add(appointment)
     await db.commit()
@@ -314,10 +314,8 @@ async def update_status(
 ) -> Appointment:
     """
     Valid transitions:
-      pending → confirmed  (professional or admin)
-      pending → cancelled  (any of the three)
       confirmed → completed (professional or admin)
-      confirmed → cancelled (any of the three)
+      confirmed → cancelled (professional, admin, or client)
 
     Records who cancelled for audit purposes.
     """
@@ -337,7 +335,6 @@ async def update_status(
         raise HTTPException(status_code=403, detail="Acesso negado")
 
     VALID_TRANSITIONS = {
-        StatusEnum.pending: [StatusEnum.confirmed, StatusEnum.cancelled],
         StatusEnum.confirmed: [StatusEnum.completed, StatusEnum.cancelled],
         StatusEnum.completed: [],
         StatusEnum.cancelled: [],
