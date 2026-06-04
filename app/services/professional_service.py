@@ -267,6 +267,7 @@ async def list_my_professionals(
             Professional.is_active,
             ProfessionalStore.store_id,
             Store.name.label("store_name"),
+            ProfessionalStore.id.label("professional_store_id"),
         )
         .join(User, User.id == Professional.user_id)
         .join(

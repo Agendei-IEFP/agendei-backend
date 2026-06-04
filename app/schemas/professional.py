@@ -63,3 +63,4 @@ class ProfessionalWithStorePublic(BaseModel):
     is_active: bool
     store_id: str
     store_name: str
+    professional_store_id: str
