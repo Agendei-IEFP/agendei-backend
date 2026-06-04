@@ -73,6 +73,18 @@ class AppointmentProfessionalPublic(BaseModel):
     store_name: str | None = None
 
 
+class AppointmentAdminPublic(BaseModel):
+    id: str
+    starts_at: datetime
+    ends_at: datetime
+    status: StatusEnum
+    client_name: str | None
+    professional_name: str | None
+    service_name: str | None
+    store_name: str | None
+    duration_minutes: int | None
+
+
 class AvailableSlot(BaseModel):
     start: datetime
     end: datetime
