@@ -13,7 +13,7 @@ from app.models.store import Store
 from app.models.store_availability import StoreAvailability
 from app.models.user import User
 from app.models.work_schedule import WorkSchedule
-from app.schemas.appointment import AppointmentClientPublic, AppointmentCreate, AppointmentUpdate, AvailableSlot
+from app.schemas.appointment import AppointmentAdminPublic, AppointmentClientPublic, AppointmentCreate, AppointmentUpdate, AvailableSlot
 from app.services.offering_service import get_offering
 from app.services.professional_service import get_professional, get_professional_store
 
@@ -368,3 +368,58 @@ async def update_status(
     await db.commit()
     await db.refresh(appt)
     return appt
+
+
+async def list_store_appointments(
+    db: AsyncSession,
+    store_id: str,
+    admin_id: str,
+    date_filter: date | None = None,
+) -> list[AppointmentAdminPublic]:
+    result = await db.execute(
+        select(Store).where(Store.id == store_id, Store.deleted_at.is_(None))
+    )
+    store = result.scalar_one_or_none()
+    if store is None:
+        raise HTTPException(status_code=404, detail="Loja não encontrada")
+    if store.owner_id != admin_id:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    query = (
+        select(Appointment)
+        .join(ProfessionalStore, ProfessionalStore.id == Appointment.professional_store_id)
+        .where(
+            ProfessionalStore.store_id == store_id,
+            Appointment.deleted_at.is_(None),
+        )
+        .options(
+            selectinload(Appointment.client),
+            selectinload(Appointment.professional).selectinload(Professional.user),
+            selectinload(Appointment.professional_store).selectinload(ProfessionalStore.store),
+            selectinload(Appointment.offering).selectinload(Offering.service),
+        )
+        .order_by(Appointment.starts_at.asc())
+    )
+
+    if date_filter is not None:
+        day_start = datetime.combine(date_filter, time.min).replace(tzinfo=timezone.utc)
+        day_end = datetime.combine(date_filter, time.max).replace(tzinfo=timezone.utc)
+        query = query.where(Appointment.starts_at >= day_start, Appointment.starts_at <= day_end)
+
+    result = await db.execute(query)
+    appts = list(result.scalars().all())
+
+    return [
+        AppointmentAdminPublic(
+            id=a.id,
+            starts_at=a.starts_at,
+            ends_at=a.ends_at,
+            status=a.status,
+            client_name=a.client.name if a.client else None,
+            professional_name=a.professional.user.name if a.professional and a.professional.user else None,
+            service_name=a.offering.service.name if a.offering and a.offering.service else None,
+            store_name=a.professional_store.store.name if a.professional_store and a.professional_store.store else None,
+            duration_minutes=int((a.ends_at - a.starts_at).total_seconds() / 60),
+        )
+        for a in appts
+    ]
