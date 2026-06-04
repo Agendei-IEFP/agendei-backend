@@ -278,10 +278,17 @@ async def list_professional_appointments(
         raise HTTPException(status_code=403, detail="Acesso negado")
 
     result = await db.execute(
-        select(Appointment).where(
+        select(Appointment)
+        .options(
+            selectinload(Appointment.client),
+            selectinload(Appointment.offering).selectinload(Offering.service),
+            selectinload(Appointment.professional_store).selectinload(ProfessionalStore.store),
+        )
+        .where(
             Appointment.professional_id == professional_id,
             Appointment.deleted_at.is_(None),
-        ).order_by(Appointment.starts_at.desc())
+        )
+        .order_by(Appointment.starts_at.asc())
     )
     return list(result.scalars().all())
 
