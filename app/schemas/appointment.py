@@ -53,6 +53,26 @@ class AppointmentClientPublic(BaseModel):
     effective_duration_minutes: int | None
 
 
+class AppointmentProfessionalPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    client_id: str
+    professional_id: str
+    professional_store_id: str
+    offering_id: str
+    starts_at: datetime
+    ends_at: datetime
+    status: StatusEnum
+    cancelled_by: str | None
+    cancellation_reason: str | None
+    reminder_sent: bool
+    client_name: str | None = None
+    service_name: str | None = None
+    duration_minutes: int | None = None
+    store_name: str | None = None
+
+
 class AvailableSlot(BaseModel):
     start: datetime
     end: datetime
