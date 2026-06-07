@@ -83,6 +83,7 @@ class AppointmentAdminPublic(BaseModel):
     service_name: str | None
     store_name: str | None
     duration_minutes: int | None
+    effective_price: Decimal | None
 
 
 class AvailableSlot(BaseModel):

@@ -416,10 +416,27 @@ async def list_store_appointments(
             ends_at=a.ends_at,
             status=a.status,
             client_name=a.client.name if a.client else None,
-            professional_name=a.professional.user.name if a.professional and a.professional.user else None,
-            service_name=a.offering.service.name if a.offering and a.offering.service else None,
-            store_name=a.professional_store.store.name if a.professional_store and a.professional_store.store else None,
+            professional_name=(
+                a.professional.user.name
+                if a.professional and a.professional.user
+                else None
+            ),
+            service_name=(
+                a.offering.service.name
+                if a.offering and a.offering.service
+                else None
+            ),
+            store_name=(
+                a.professional_store.store.name
+                if a.professional_store and a.professional_store.store
+                else None
+            ),
             duration_minutes=int((a.ends_at - a.starts_at).total_seconds() / 60),
+            effective_price=(
+                a.offering.price_override
+                if a.offering and a.offering.price_override is not None
+                else (a.offering.service.default_price if a.offering and a.offering.service else None)
+            ),
         )
         for a in appts
     ]
