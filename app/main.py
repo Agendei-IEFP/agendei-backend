@@ -26,13 +26,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.task.email_service import scan_and_send_reminders, delete_sent_notifications_job
 from contextlib import asynccontextmanager
 
-
 scheduler = AsyncIOScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     #Inicia a task
-    scheduler.add_job(scan_and_send_reminders, "interval", minutes=1)
+    scheduler.add_job(scan_and_send_reminders, "interval", minutes=15)
     scheduler.add_job(delete_sent_notifications_job, "cron", day_of_week="sun", hour=3, minute=0)
     scheduler.start()
     print(datetime.now())
@@ -88,5 +87,4 @@ app.include_router(schedules_router,         prefix=PREFIX)
 app.include_router(appointments_router,      prefix=PREFIX)
 app.include_router(invites_router,           prefix=PREFIX)
 app.include_router(me_router,                prefix=PREFIX)
-
 app.include_router(notification_router,      prefix=PREFIX)

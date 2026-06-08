@@ -36,7 +36,6 @@ async def _verify_owner(
         raise HTTPException(status_code=403, detail="Acesso negado")
     return link
 
-
 async def _assert_no_overlap(
     db: AsyncSession,
     professional_store_id: str,
