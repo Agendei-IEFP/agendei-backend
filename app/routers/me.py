@@ -82,6 +82,8 @@ def _serialize_professional_appt(a):
         "cancellation_reason": a.cancellation_reason,
         "reminder_sent": a.reminder_sent,
         "client_name": a.client.name if a.client else None,
+        "client_phone": a.client.phone if a.client else None,
+        "client_email": a.client.email if a.client else None,
         "service_name": service.name if service else None,
         "duration_minutes": (
             offering.duration_override

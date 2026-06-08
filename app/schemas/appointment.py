@@ -68,6 +68,8 @@ class AppointmentProfessionalPublic(BaseModel):
     cancellation_reason: str | None
     reminder_sent: bool
     client_name: str | None = None
+    client_phone: str | None = None
+    client_email: str | None = None
     service_name: str | None = None
     duration_minutes: int | None = None
     store_name: str | None = None
