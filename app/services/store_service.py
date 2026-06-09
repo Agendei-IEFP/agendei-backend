@@ -8,14 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.offering import Offering
 from app.models.professional_store import ProfessionalStore
 from app.models.service import Service
-from app.models.store import Store, StoreType
+from app.models.store import Store
 from app.models.user import User
 from app.schemas.store import StoreCreate, StoreOfferingPublic, StorePublic, StoreUpdate
 
 
-async def list_stores(
-    db: AsyncSession, store_type: StoreType | None = None
-) -> list[StorePublic]:
+async def list_stores(db: AsyncSession) -> list[StorePublic]:
     # Cria uma subquery para ser usada dentro do execute abaixo
     professional_count_sq = (
         select(func.count(ProfessionalStore.id))
@@ -44,8 +42,6 @@ async def list_stores(
         Store.deleted_at.is_(None),
         Store.is_active.is_(True),
     ]
-    if store_type is not None:
-        filters.append(Store.store_types.contains([store_type]))
 
     result = await db.execute(
         select(

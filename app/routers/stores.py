@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_role
 from app.db.session import get_db
-from app.models.store import StoreType
 from app.models.user import RoleEnum, User
 from app.schemas.appointment import AppointmentAdminPublic
 from app.schemas.store import StoreCreate, StoreOfferingPublic, StorePublic, StoreUpdate
@@ -16,11 +15,8 @@ router = APIRouter(prefix="/stores", tags=["stores"])
 
 
 @router.get("", response_model=list[StorePublic])
-async def list_stores(
-    store_type: StoreType | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
-):
-    return await store_service.list_stores(db, store_type=store_type)
+async def list_stores(db: AsyncSession = Depends(get_db)):
+    return await store_service.list_stores(db)
 
 
 @router.get("/{store_id}", response_model=StorePublic)
