@@ -3,15 +3,17 @@ from datetime import datetime, date, timedelta, timezone, time
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.appointment import Appointment, StatusEnum
+from app.models.offering import Offering
 from app.models.professional import Professional
 from app.models.professional_store import ProfessionalStore
 from app.models.store import Store
 from app.models.store_availability import StoreAvailability
 from app.models.user import User
 from app.models.work_schedule import WorkSchedule
-from app.schemas.appointment import AppointmentCreate, AppointmentUpdate, AvailableSlot
+from app.schemas.appointment import AppointmentAdminPublic, AppointmentClientPublic, AppointmentCreate, AppointmentUpdate, AvailableSlot
 from app.services.offering_service import get_offering
 from app.services.professional_service import get_professional, get_professional_store
 
@@ -86,7 +88,7 @@ async def list_available_slots(
             Appointment.professional_id == link.professional_id,
             Appointment.starts_at >= day_start,
             Appointment.starts_at <= day_end,
-            Appointment.status.in_([StatusEnum.pending, StatusEnum.confirmed]),
+            Appointment.status == StatusEnum.confirmed,
         )
     )
     booked = list(result_appointments.scalars().all())
@@ -163,7 +165,7 @@ async def create_appointment(
     conflict = await db.execute(
         select(Appointment).where(
             Appointment.professional_id == link.professional_id,
-            Appointment.status.in_([StatusEnum.pending, StatusEnum.confirmed]),
+            Appointment.status == StatusEnum.confirmed,
             Appointment.starts_at < ends_at,
             Appointment.ends_at > starts_at,
         )
@@ -181,7 +183,7 @@ async def create_appointment(
         offering_id=data.offering_id,
         starts_at=starts_at,
         ends_at=ends_at,
-        status=StatusEnum.pending,
+        status=StatusEnum.confirmed,
     )
     db.add(appointment)
     await db.commit()
@@ -199,6 +201,49 @@ async def list_client_appointments(
         ).order_by(Appointment.starts_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def list_client_appointments_detailed(
+    db: AsyncSession, client: User
+) -> list[AppointmentClientPublic]:
+    result = await db.execute(
+        select(Appointment)
+        .where(
+            Appointment.client_id == client.id,
+            Appointment.deleted_at.is_(None),
+        )
+        .options(
+            selectinload(Appointment.offering).selectinload(Offering.service),
+            selectinload(Appointment.professional_store).selectinload(ProfessionalStore.store),
+            selectinload(Appointment.professional).selectinload(Professional.user),
+        )
+        .order_by(Appointment.starts_at.desc())
+    )
+    appointments = list(result.scalars().all())
+
+    items = []
+    for apt in appointments:
+        offering = apt.offering
+        service = offering.service if offering else None
+        prof_store = apt.professional_store
+        store = prof_store.store if prof_store else None
+        professional = apt.professional
+
+        items.append(AppointmentClientPublic(
+            id=apt.id,
+            starts_at=apt.starts_at,
+            ends_at=apt.ends_at,
+            status=apt.status,
+            notes=apt.notes,
+            cancelled_by=apt.cancelled_by,
+            cancellation_reason=apt.cancellation_reason,
+            service_name=service.name if service else None,
+            professional_name=professional.user.name if professional and professional.user else None,
+            store_name=store.name if store else None,
+            effective_price=offering.price_override if offering and offering.price_override is not None else (service.default_price if service else None),
+            effective_duration_minutes=offering.duration_override if offering and offering.duration_override is not None else (service.default_duration_minutes if service else None),
+        ))
+    return items
 
 
 async def list_professional_appointments(
@@ -233,10 +278,17 @@ async def list_professional_appointments(
         raise HTTPException(status_code=403, detail="Acesso negado")
 
     result = await db.execute(
-        select(Appointment).where(
+        select(Appointment)
+        .options(
+            selectinload(Appointment.client),
+            selectinload(Appointment.offering).selectinload(Offering.service),
+            selectinload(Appointment.professional_store).selectinload(ProfessionalStore.store),
+        )
+        .where(
             Appointment.professional_id == professional_id,
             Appointment.deleted_at.is_(None),
-        ).order_by(Appointment.starts_at.desc())
+        )
+        .order_by(Appointment.starts_at.asc())
     )
     return list(result.scalars().all())
 
@@ -262,10 +314,8 @@ async def update_status(
 ) -> Appointment:
     """
     Valid transitions:
-      pending → confirmed  (professional or admin)
-      pending → cancelled  (any of the three)
       confirmed → completed (professional or admin)
-      confirmed → cancelled (any of the three)
+      confirmed → cancelled (professional, admin, or client)
 
     Records who cancelled for audit purposes.
     """
@@ -285,7 +335,6 @@ async def update_status(
         raise HTTPException(status_code=403, detail="Acesso negado")
 
     VALID_TRANSITIONS = {
-        StatusEnum.pending: [StatusEnum.confirmed, StatusEnum.cancelled],
         StatusEnum.confirmed: [StatusEnum.completed, StatusEnum.cancelled],
         StatusEnum.completed: [],
         StatusEnum.cancelled: [],
@@ -319,3 +368,75 @@ async def update_status(
     await db.commit()
     await db.refresh(appt)
     return appt
+
+
+async def list_store_appointments(
+    db: AsyncSession,
+    store_id: str,
+    admin_id: str,
+    date_filter: date | None = None,
+) -> list[AppointmentAdminPublic]:
+    result = await db.execute(
+        select(Store).where(Store.id == store_id, Store.deleted_at.is_(None))
+    )
+    store = result.scalar_one_or_none()
+    if store is None:
+        raise HTTPException(status_code=404, detail="Loja não encontrada")
+    if store.owner_id != admin_id:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    query = (
+        select(Appointment)
+        .join(ProfessionalStore, ProfessionalStore.id == Appointment.professional_store_id)
+        .where(
+            ProfessionalStore.store_id == store_id,
+            Appointment.deleted_at.is_(None),
+        )
+        .options(
+            selectinload(Appointment.client),
+            selectinload(Appointment.professional).selectinload(Professional.user),
+            selectinload(Appointment.professional_store).selectinload(ProfessionalStore.store),
+            selectinload(Appointment.offering).selectinload(Offering.service),
+        )
+        .order_by(Appointment.starts_at.asc())
+    )
+
+    if date_filter is not None:
+        day_start = datetime.combine(date_filter, time.min).replace(tzinfo=timezone.utc)
+        day_end = datetime.combine(date_filter, time.max).replace(tzinfo=timezone.utc)
+        query = query.where(Appointment.starts_at >= day_start, Appointment.starts_at <= day_end)
+
+    result = await db.execute(query)
+    appts = list(result.scalars().all())
+
+    return [
+        AppointmentAdminPublic(
+            id=a.id,
+            starts_at=a.starts_at,
+            ends_at=a.ends_at,
+            status=a.status,
+            client_name=a.client.name if a.client else None,
+            professional_name=(
+                a.professional.user.name
+                if a.professional and a.professional.user
+                else None
+            ),
+            service_name=(
+                a.offering.service.name
+                if a.offering and a.offering.service
+                else None
+            ),
+            store_name=(
+                a.professional_store.store.name
+                if a.professional_store and a.professional_store.store
+                else None
+            ),
+            duration_minutes=int((a.ends_at - a.starts_at).total_seconds() / 60),
+            effective_price=(
+                a.offering.price_override
+                if a.offering and a.offering.price_override is not None
+                else (a.offering.service.default_price if a.offering and a.offering.service else None)
+            ),
+        )
+        for a in appts
+    ]

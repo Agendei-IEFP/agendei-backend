@@ -45,7 +45,7 @@ async def list_stores(
         Store.is_active.is_(True),
     ]
     if store_type is not None:
-        filters.append(Store.store_type == store_type)
+        filters.append(Store.store_types.contains([store_type]))
 
     result = await db.execute(
         select(
@@ -73,7 +73,7 @@ async def list_stores(
             address=store.address,
             logo_url=store.logo_url,
             is_active=store.is_active,
-            store_type=store.store_type,
+            store_types=store.store_types or [],
             created_at=store.created_at,
             updated_at=store.updated_at,
             professional_count=prof_count,
@@ -83,15 +83,59 @@ async def list_stores(
     ]
 
 
-async def list_my_stores(db: AsyncSession, owner_id: str) -> list[Store]:
+async def list_my_stores(db: AsyncSession, owner_id: str) -> list[StorePublic]:
+    professional_count_sq = (
+        select(func.count(ProfessionalStore.id))
+        .where(
+            ProfessionalStore.store_id == Store.id,
+            ProfessionalStore.deleted_at.is_(None),
+        )
+        .correlate(Store)
+        .scalar_subquery()
+    )
+    service_count_sq = (
+        select(func.count(Offering.id))
+        .join(ProfessionalStore, Offering.professional_store_id == ProfessionalStore.id)
+        .where(
+            ProfessionalStore.store_id == Store.id,
+            Offering.is_enabled.is_(True),
+            Offering.deleted_at.is_(None),
+            ProfessionalStore.deleted_at.is_(None),
+        )
+        .correlate(Store)
+        .scalar_subquery()
+    )
+
     result = await db.execute(
-        select(Store).where(
+        select(
+            Store,
+            professional_count_sq.label("professional_count"),
+            service_count_sq.label("service_count"),
+        ).where(
             Store.owner_id == owner_id,
             Store.deleted_at.is_(None),
-            Store.is_active.is_(True),
         )
     )
-    return result.scalars().all()
+
+    return [
+        StorePublic(
+            id=store.id,
+            owner_id=store.owner_id,
+            name=store.name,
+            description=store.description,
+            phone=store.phone,
+            email=store.email,
+            address=store.address,
+            logo_url=store.logo_url,
+            is_active=store.is_active,
+            store_types=store.store_types or [],
+            created_at=store.created_at,
+            updated_at=store.updated_at,
+            professional_count=prof_count,
+            service_count=svc_count,
+        )
+        for store, prof_count, svc_count in result.all()
+    ]
 
 
 async def get_store(db: AsyncSession, store_id: str) -> Store:

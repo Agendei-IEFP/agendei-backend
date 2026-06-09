@@ -12,7 +12,6 @@ from app.models.offering import Offering
 
 
 class StatusEnum(str, enum.Enum):
-    pending = "pending"
     confirmed = "confirmed"
     cancelled = "cancelled"
     completed = "completed"
@@ -29,7 +28,7 @@ class Appointment(Base, ULIDMixin, TimestampMixin):
     offering_id: Mapped[str] = mapped_column(String(26), ForeignKey("offerings.id"))
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    status: Mapped[StatusEnum] = mapped_column(Enum(StatusEnum), default=StatusEnum.pending)
+    status: Mapped[StatusEnum] = mapped_column(Enum(StatusEnum), default=StatusEnum.confirmed)
     notes: Mapped[str | None] = mapped_column(Text)
     cancelled_by: Mapped[str | None] = mapped_column(String(26))
     cancellation_reason: Mapped[str | None] = mapped_column(Text)

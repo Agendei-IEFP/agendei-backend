@@ -1,6 +1,7 @@
 import enum
 
-from sqlalchemy import Boolean, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, Enum, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.mixins import Base, TimestampMixin, ULIDMixin
@@ -27,8 +28,11 @@ class Store(Base, ULIDMixin, TimestampMixin):
     address: Mapped[str | None] = mapped_column(String(255))
     logo_url: Mapped[str | None] = mapped_column(String(500))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    store_type: Mapped[StoreType | None] = mapped_column(
-        Enum(StoreType), nullable=True
+    store_types = Column(
+        ARRAY(Enum(StoreType, name="storetype")),
+        nullable=False,
+        default=list,
+        server_default="{}",
     )
 
     owner: Mapped[User] = relationship("User")

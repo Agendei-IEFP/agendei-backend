@@ -1,9 +1,19 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.models.store import StoreType
+
+
+def _validate_store_types(v: list[StoreType] | None) -> list[StoreType] | None:
+    if v is None:
+        return v
+    if len(v) > 3:
+        raise ValueError("Máximo de 3 tipos por estabelecimento")
+    if len(v) != len(set(v)):
+        raise ValueError("Tipos duplicados não são permitidos")
+    return v
 
 
 class StoreCreate(BaseModel):
@@ -13,7 +23,12 @@ class StoreCreate(BaseModel):
     email: str | None = None
     address: str | None = None
     logo_url: str | None = None
-    store_type: StoreType | None = None
+    store_types: list[StoreType] = []
+
+    @field_validator("store_types")
+    @classmethod
+    def validate_store_types(cls, v: list[StoreType]) -> list[StoreType]:
+        return _validate_store_types(v)  # type: ignore[return-value]
 
 
 class StoreUpdate(BaseModel):
@@ -23,7 +38,13 @@ class StoreUpdate(BaseModel):
     email: str | None = None
     address: str | None = None
     logo_url: str | None = None
-    store_type: StoreType | None = None
+    store_types: list[StoreType] | None = None
+    is_active: bool | None = None
+
+    @field_validator("store_types")
+    @classmethod
+    def validate_store_types(cls, v: list[StoreType] | None) -> list[StoreType] | None:
+        return _validate_store_types(v)
 
 
 class StorePublic(BaseModel):
@@ -36,7 +57,7 @@ class StorePublic(BaseModel):
     address: str | None
     logo_url: str | None
     is_active: bool
-    store_type: StoreType | None
+    store_types: list[StoreType]
     created_at: datetime
     updated_at: datetime
     professional_count: int = 0
