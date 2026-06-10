@@ -109,49 +109,6 @@ async def test_slots_sem_horario_retorna_lista_vazia(client: AsyncClient):
     assert res.json() == []
 
 
-async def test_slots_multi_blocos_nao_atravessam_pausa(client: AsyncClient):
-    """
-    Two blocks on Monday: 08:00-10:00 and 13:00-14:00.
-    Service duration = 60min, grid = 10min.
-    Expected slots: 08:00, 08:10, ..., 09:00 (block 1) + 13:00 (block 2).
-    No slot should span 10:00-13:00 pause.
-    """
-    ctx = await _setup(client)
-    ps_id = ctx["professional_store_id"]
-    headers = {"Authorization": f"Bearer {ctx['prof_token']}"}
-    monday = _next_monday()
-
-    await client.post(
-        f"{PROF_STORES_BASE}/{ps_id}/schedules",
-        json={"weekday": 0, "start_time": "08:00:00", "end_time": "10:00:00"},
-        headers=headers,
-    )
-    await client.post(
-        f"{PROF_STORES_BASE}/{ps_id}/schedules",
-        json={"weekday": 0, "start_time": "13:00:00", "end_time": "14:00:00"},
-        headers=headers,
-    )
-
-    res = await client.get(
-        f"{PROF_STORES_BASE}/{ps_id}/available-slots",
-        params={"offering_id": ctx["offering_id"], "date": monday},
-    )
-    assert res.status_code == 200
-    slots = res.json()
-
-    starts = [s["start"][11:16] for s in slots]  # extract HH:MM from ISO datetime
-
-    # All slots must start within block 1 (08:00-09:00) or block 2 (13:00)
-    for start in starts:
-        in_block_1 = "08:00" <= start <= "09:00"
-        in_block_2 = start == "13:00"
-        assert in_block_1 or in_block_2, f"Slot {start} crosses the pause or is outside blocks"
-
-    # Must have no slot starting in the pause (10:00-13:00)
-    pause_slots = [s for s in starts if "10:00" <= s < "13:00"]
-    assert pause_slots == [], f"Slots found in pause window: {pause_slots}"
-
-
 async def test_slots_grid_10min(client: AsyncClient):
     """
     Block 08:00-09:00, service 30min.
@@ -163,7 +120,6 @@ async def test_slots_grid_10min(client: AsyncClient):
     headers = {"Authorization": f"Bearer {ctx['prof_token']}"}
     monday = _next_monday()
 
-    # Create a 30-min offering by using duration_override
     service_res = await client.post(
         SERVICES_URL,
         json={"name": "Sobrancelha", "default_price": "30.00", "default_duration_minutes": 30},
@@ -176,9 +132,9 @@ async def test_slots_grid_10min(client: AsyncClient):
     )
     offering_id = offering_res.json()["id"]
 
-    await client.post(
+    await client.put(
         f"{PROF_STORES_BASE}/{ps_id}/schedules",
-        json={"weekday": 0, "start_time": "08:00:00", "end_time": "09:00:00"},
+        json={"schedules": [{"weekday": 0, "start_time": "08:00:00", "end_time": "09:00:00"}]},
         headers=headers,
     )
 

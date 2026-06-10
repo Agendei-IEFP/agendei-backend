@@ -21,11 +21,34 @@ ANON_PROF = {
     "accepted_terms": True,
 }
 
+ADMIN_USER_2 = {
+    "name": "Admin 2",
+    "email": "admin2@test.com",
+    "password": "password123",
+    "role": "store_admin",
+    "accepted_terms": True,
+}
+
+ANON_PROF_2 = {
+    "name": "Prof 2",
+    "email": "prof2@test.com",
+    "password": "senha123",
+    "accepted_terms": True,
+}
+
 VALID_STORE = {"name": "Salão da Ana"}
 
-BLOCK_MORNING = {"weekday": 1, "start_time": "08:00:00", "end_time": "12:00:00"}
-BLOCK_AFTERNOON = {"weekday": 1, "start_time": "13:00:00", "end_time": "17:00:00"}
-BLOCK_OVERLAP = {"weekday": 1, "start_time": "11:00:00", "end_time": "14:00:00"}
+WEEK_FULL = {
+    "schedules": [
+        {"weekday": 0, "start_time": "09:00:00", "end_time": "18:00:00", "is_active": True},
+        {"weekday": 1, "start_time": "09:00:00", "end_time": "18:00:00", "is_active": True},
+        {"weekday": 2, "start_time": "09:00:00", "end_time": "18:00:00", "is_active": True},
+        {"weekday": 3, "start_time": "09:00:00", "end_time": "18:00:00", "is_active": True},
+        {"weekday": 4, "start_time": "09:00:00", "end_time": "17:00:00", "is_active": True},
+        {"weekday": 5, "start_time": "09:00:00", "end_time": "13:00:00", "is_active": True},
+        {"weekday": 6, "start_time": "09:00:00", "end_time": "18:00:00", "is_active": False},
+    ]
+}
 
 
 async def _register_and_login(client: AsyncClient, user: dict) -> str:
@@ -66,52 +89,144 @@ async def _setup(client: AsyncClient) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# POST /professional-stores/{id}/schedules
+# GET /professional-stores/{id}/schedules
 # ---------------------------------------------------------------------------
 
 
-async def test_criar_dois_blocos_mesmo_dia_success(client: AsyncClient):
+async def test_list_schedules_empty(client: AsyncClient):
+    ctx = await _setup(client)
+    ps_id = ctx["professional_store_id"]
+
+    res = await client.get(f"{PROF_STORES_BASE}/{ps_id}/schedules")
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+async def test_list_schedules_not_found(client: AsyncClient):
+    res = await client.get(f"{PROF_STORES_BASE}/nonexistentid00000000000000/schedules")
+    assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PUT /professional-stores/{id}/schedules
+# ---------------------------------------------------------------------------
+
+
+async def test_upsert_full_week(client: AsyncClient):
     ctx = await _setup(client)
     ps_id = ctx["professional_store_id"]
     headers = {"Authorization": f"Bearer {ctx['prof_token']}"}
 
-    r1 = await client.post(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=BLOCK_MORNING, headers=headers)
-    assert r1.status_code == 201
-    assert r1.json()["start_time"] == BLOCK_MORNING["start_time"]
+    res = await client.put(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=WEEK_FULL, headers=headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body) == 7
 
-    r2 = await client.post(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=BLOCK_AFTERNOON, headers=headers)
-    assert r2.status_code == 201
-    assert r2.json()["start_time"] == BLOCK_AFTERNOON["start_time"]
-
-    list_res = await client.get(f"{PROF_STORES_BASE}/{ps_id}/schedules", headers=headers)
-    assert list_res.status_code == 200
-    assert len(list_res.json()) == 2
+    list_res = await client.get(f"{PROF_STORES_BASE}/{ps_id}/schedules")
+    assert len(list_res.json()) == 7
 
 
-async def test_criar_bloco_sobreposto_retorna_409(client: AsyncClient):
+async def test_upsert_returns_inactive_days(client: AsyncClient):
     ctx = await _setup(client)
     ps_id = ctx["professional_store_id"]
     headers = {"Authorization": f"Bearer {ctx['prof_token']}"}
 
-    await client.post(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=BLOCK_MORNING, headers=headers)
+    await client.put(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=WEEK_FULL, headers=headers)
 
-    r = await client.post(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=BLOCK_OVERLAP, headers=headers)
-    assert r.status_code == 409
+    list_res = await client.get(f"{PROF_STORES_BASE}/{ps_id}/schedules")
+    days = list_res.json()
+    sunday = next(d for d in days if d["weekday"] == 6)
+    assert sunday["is_active"] is False
 
 
-async def test_atualizar_bloco_para_sobrepor_retorna_409(client: AsyncClient):
+async def test_upsert_updates_existing_day(client: AsyncClient):
     ctx = await _setup(client)
     ps_id = ctx["professional_store_id"]
     headers = {"Authorization": f"Bearer {ctx['prof_token']}"}
 
-    r1 = await client.post(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=BLOCK_MORNING, headers=headers)
-    r2 = await client.post(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=BLOCK_AFTERNOON, headers=headers)
-    schedule_id = r2.json()["id"]
+    await client.put(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=WEEK_FULL, headers=headers)
 
-    # Try to extend afternoon block back into morning block
-    r = await client.patch(
-        f"{PROF_STORES_BASE}/{ps_id}/schedules/{schedule_id}",
-        json={"start_time": "11:00:00"},
+    updated = {
+        "schedules": [
+            {"weekday": 0, "start_time": "10:00:00", "end_time": "16:00:00", "is_active": True}
+        ]
+    }
+    res = await client.put(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=updated, headers=headers)
+    assert res.status_code == 200
+
+    list_res = await client.get(f"{PROF_STORES_BASE}/{ps_id}/schedules")
+    monday = next(d for d in list_res.json() if d["weekday"] == 0)
+    assert monday["start_time"] == "10:00:00"
+    assert monday["end_time"] == "16:00:00"
+
+
+async def test_upsert_empty_payload_returns_empty(client: AsyncClient):
+    ctx = await _setup(client)
+    ps_id = ctx["professional_store_id"]
+    headers = {"Authorization": f"Bearer {ctx['prof_token']}"}
+
+    res = await client.put(
+        f"{PROF_STORES_BASE}/{ps_id}/schedules", json={"schedules": []}, headers=headers
+    )
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+async def test_upsert_invalid_weekday_rejected(client: AsyncClient):
+    ctx = await _setup(client)
+    ps_id = ctx["professional_store_id"]
+    headers = {"Authorization": f"Bearer {ctx['prof_token']}"}
+
+    res = await client.put(
+        f"{PROF_STORES_BASE}/{ps_id}/schedules",
+        json={"schedules": [{"weekday": 7, "start_time": "09:00:00", "end_time": "18:00:00"}]},
         headers=headers,
     )
-    assert r.status_code == 409
+    assert res.status_code == 422
+
+
+async def test_upsert_end_before_start_rejected(client: AsyncClient):
+    ctx = await _setup(client)
+    ps_id = ctx["professional_store_id"]
+    headers = {"Authorization": f"Bearer {ctx['prof_token']}"}
+
+    res = await client.put(
+        f"{PROF_STORES_BASE}/{ps_id}/schedules",
+        json={"schedules": [{"weekday": 0, "start_time": "18:00:00", "end_time": "09:00:00", "is_active": True}]},
+        headers=headers,
+    )
+    assert res.status_code == 422
+
+
+async def test_upsert_unauthenticated(client: AsyncClient):
+    ctx = await _setup(client)
+    ps_id = ctx["professional_store_id"]
+
+    res = await client.put(f"{PROF_STORES_BASE}/{ps_id}/schedules", json=WEEK_FULL)
+    assert res.status_code == 401
+
+
+async def test_upsert_wrong_owner_forbidden(client: AsyncClient):
+    ctx = await _setup(client)
+    ps_id = ctx["professional_store_id"]
+
+    admin2_token = await _register_and_login(client, ADMIN_USER_2)
+    store2_res = await client.post(
+        STORES_URL, json={"name": "Outro Salão"}, headers={"Authorization": f"Bearer {admin2_token}"}
+    )
+    store2_id = store2_res.json()["id"]
+    invite2_res = await client.post(
+        f"{STORES_URL}/{store2_id}/invites",
+        headers={"Authorization": f"Bearer {admin2_token}"},
+    )
+    accept2_res = await client.post(
+        f"{INVITES_URL}/{invite2_res.json()['token']}/accept", json=ANON_PROF_2
+    )
+    prof2_token = accept2_res.json()["access_token"]
+
+    res = await client.put(
+        f"{PROF_STORES_BASE}/{ps_id}/schedules",
+        json=WEEK_FULL,
+        headers={"Authorization": f"Bearer {prof2_token}"},
+    )
+    assert res.status_code == 403

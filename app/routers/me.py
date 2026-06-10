@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.models.user import RoleEnum, User
 from app.schemas.appointment import AppointmentClientPublic, AppointmentPublic, AppointmentProfessionalPublic
-from app.schemas.professional import ProfessionalPublic, ProfessionalStorePublic, ProfessionalUpdate, ProfessionalWithStorePublic
+from app.schemas.professional import ProfessionalPublic, ProfessionalUpdate, ProfessionalWithStorePublic
 from app.schemas.store import StorePublic
 from app.schemas.user import UserPublic, UserUpdate
 from app.services import appointment_service, professional_service, store_service, user_service
@@ -66,15 +66,13 @@ async def list_my_professional_appointments(
     return [_serialize_professional_appt(a) for a in appointments]
 
 
-def _serialize_professional_appt(a):
-    offering = a.offering
-    service = offering.service if offering else None
+def _serialize_professional_appt(a) -> dict:
     return {
         "id": a.id,
         "client_id": a.client_id,
         "professional_id": a.professional_id,
-        "professional_store_id": a.professional_store_id,
-        "offering_id": a.offering_id,
+        "service_id": a.service_id,
+        "store_id": a.store_id,
         "starts_at": a.starts_at,
         "ends_at": a.ends_at,
         "status": a.status,
@@ -84,22 +82,32 @@ def _serialize_professional_appt(a):
         "client_name": a.client.name if a.client else None,
         "client_phone": a.client.phone if a.client else None,
         "client_email": a.client.email if a.client else None,
-        "service_name": service.name if service else None,
-        "duration_minutes": (
-            offering.duration_override
-            if offering and offering.duration_override is not None
-            else (service.default_duration_minutes if service else None)
-        ),
-        "store_name": a.professional_store.store.name if a.professional_store and a.professional_store.store else None,
+        "service_name": a.service.name if a.service else None,
+        "duration_minutes": a.service.duration_minutes if a.service else None,
+        "store_name": a.store.name if a.store else None,
     }
 
 
-@router.get("/professional-stores", response_model=list[ProfessionalStorePublic])
-async def list_my_professional_stores(
+@router.get("/professional-store", response_model=ProfessionalWithStorePublic)
+async def get_my_professional_store(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(RoleEnum.professional, RoleEnum.store_admin)),
 ):
-    return await professional_service.list_user_professional_stores(db, current_user)
+    professionals = await professional_service.list_my_professional_stores(db, current_user)
+    if not professionals:
+        raise HTTPException(status_code=404, detail="Perfil de profissional não encontrado")
+    p = professionals[0]
+    return ProfessionalWithStorePublic(
+        id=p.id,
+        user_id=p.user_id,
+        store_id=p.store_id,
+        name=p.user.name,
+        bio=p.bio,
+        photo_url=p.photo_url,
+        is_active=p.is_active,
+        store_name=p.store.name,
+        store=p.store,
+    )
 
 
 @router.get("/professional", response_model=ProfessionalPublic)
@@ -124,5 +132,18 @@ async def list_my_professionals(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(RoleEnum.store_admin)),
 ):
-    rows = await professional_service.list_my_professionals(db, current_user)
-    return [ProfessionalWithStorePublic.model_validate(row) for row in rows]
+    professionals = await professional_service.list_my_professionals(db, current_user)
+    return [
+        ProfessionalWithStorePublic(
+            id=p.id,
+            user_id=p.user_id,
+            store_id=p.store_id,
+            name=p.user.name,
+            bio=p.bio,
+            photo_url=p.photo_url,
+            is_active=p.is_active,
+            store_name=p.store.name,
+            store=p.store,
+        )
+        for p in professionals
+    ]

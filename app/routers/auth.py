@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.dependencies import require_role
 from app.db.session import get_db
+from app.models.user import RoleEnum, User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserPublic
 from app.services import auth_service
@@ -29,9 +31,9 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(
-    data: RegisterRequest,
-    response: Response,
-    db: AsyncSession = Depends(get_db),
+        data: RegisterRequest,
+        response: Response,
+        db: AsyncSession = Depends(get_db),
 ):
     access_token, refresh_token, usuario = await auth_service.register(db, data)
     _set_refresh_cookie(response, refresh_token)
@@ -41,11 +43,21 @@ async def register(
     )
 
 
+@router.post("/register-professional", response_model=bool, status_code=201)
+async def register_professional(
+        data: RegisterRequest,
+        store_id: str,
+        admin: User = Depends(require_role(RoleEnum.store_admin)),
+        db: AsyncSession = Depends(get_db),
+):
+    return await auth_service.register_professional(db, data, store_id, admin)
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
-    data: LoginRequest,
-    response: Response,
-    db: AsyncSession = Depends(get_db),
+        data: LoginRequest,
+        response: Response,
+        db: AsyncSession = Depends(get_db),
 ):
     access_token, refresh_token, usuario = await auth_service.login(db, data)
     _set_refresh_cookie(response, refresh_token)
@@ -57,9 +69,9 @@ async def login(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(
-    request: Request,
-    response: Response,
-    db: AsyncSession = Depends(get_db),
+        request: Request,
+        response: Response,
+        db: AsyncSession = Depends(get_db),
 ):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:

@@ -7,7 +7,7 @@ from app.core.dependencies import require_role
 from app.db.session import get_db
 from app.models.user import RoleEnum, User
 from app.schemas.appointment import AppointmentAdminPublic
-from app.schemas.store import StoreCreate, StoreOfferingPublic, StorePublic, StoreUpdate
+from app.schemas.store import StoreCreate, StoreServicePublic, StorePublic, StoreUpdate
 from app.services import store_service
 from app.services import appointment_service
 
@@ -24,9 +24,9 @@ async def get_store(store_id: str, db: AsyncSession = Depends(get_db)):
     return await store_service.get_store(db, store_id)
 
 
-@router.get("/{store_id}/offerings", response_model=list[StoreOfferingPublic])
-async def list_store_offerings(store_id: str, db: AsyncSession = Depends(get_db)):
-    return await store_service.list_store_offerings(db, store_id)
+@router.get("/{store_id}/services", response_model=list[StoreServicePublic])
+async def list_store_services(store_id: str, db: AsyncSession = Depends(get_db)):
+    return await store_service.list_store_services(db, store_id)
 
 
 @router.post("", response_model=StorePublic, status_code=201)
