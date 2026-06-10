@@ -10,7 +10,7 @@ from app.core import security
 from app.core.config import settings
 from app.models.professional import Professional
 from app.models.professional_invite import ProfessionalInvite
-from app.models.professional_store import ProfessionalStore
+from app.models.store import Store
 from app.models.user import RoleEnum, User
 from app.schemas.invite import InviteAcceptRequest, InviteAcceptResponse, InviteCreatedResponse, InvitePublic
 from app.services.store_service import get_store
@@ -72,7 +72,6 @@ async def accept_invite(
     current_user: User | None,
     body: InviteAcceptRequest,
 ) -> InviteAcceptResponse:
-    # Lock the row to prevent race conditions on simultaneous accepts
     result = await db.execute(
         select(ProfessionalInvite)
         .where(
@@ -94,25 +93,23 @@ async def accept_invite(
     elif current_user.role == RoleEnum.client:
         user = await _accept_client(db, current_user)
     else:
-        # professional or store_admin — role stays as-is
         user = current_user
 
-    professional = await _upsert_professional(db, user)
-    link = await _upsert_professional_store(db, professional.id, invite.store_id)
+    professional = await _link_professional_to_store(db, user, invite.store_id)
 
     invite.used_at = datetime.now(timezone.utc)
     invite.accepted_user_id = user.id
     await db.commit()
 
     result = await db.execute(
-        select(ProfessionalStore)
-        .options(selectinload(ProfessionalStore.store))
-        .where(ProfessionalStore.id == link.id)
+        select(Professional)
+        .options(selectinload(Professional.store), selectinload(Professional.user))
+        .where(Professional.id == professional.id)
     )
-    link = result.scalar_one()
+    professional = result.scalar_one()
 
     return InviteAcceptResponse(
-        professional_store=link,
+        professional=professional,
         access_token=access_token,
         refresh_token=refresh_token,
     )
@@ -159,9 +156,9 @@ async def _accept_anonymous(
     db.add(user)
     await db.flush()
 
-    access_token = security.create_access_token({"sub": user.id, "role": user.role})
-    refresh_token = security.create_refresh_token({"sub": user.id})
-    return user, access_token, refresh_token
+    at = security.create_access_token({"sub": user.id, "role": user.role})
+    rt = security.create_refresh_token({"sub": user.id})
+    return user, at, rt
 
 
 async def _accept_client(db: AsyncSession, user: User) -> User:
@@ -170,7 +167,9 @@ async def _accept_client(db: AsyncSession, user: User) -> User:
     return user
 
 
-async def _upsert_professional(db: AsyncSession, user: User) -> Professional:
+async def _link_professional_to_store(
+    db: AsyncSession, user: User, store_id: str
+) -> Professional:
     result = await db.execute(
         select(Professional).where(
             Professional.user_id == user.id,
@@ -178,33 +177,16 @@ async def _upsert_professional(db: AsyncSession, user: User) -> Professional:
         )
     )
     professional = result.scalar_one_or_none()
-    if professional is None:
-        professional = Professional(user_id=user.id)
-        db.add(professional)
-        await db.flush()
-    return professional
 
-
-async def _upsert_professional_store(
-    db: AsyncSession, professional_id: str, store_id: str
-) -> ProfessionalStore:
-    result = await db.execute(
-        select(ProfessionalStore).where(
-            ProfessionalStore.professional_id == professional_id,
-            ProfessionalStore.store_id == store_id,
+    if professional is not None:
+        if professional.store_id == store_id:
+            raise HTTPException(status_code=409, detail="Profissional já vinculado a esta loja")
+        raise HTTPException(
+            status_code=409,
+            detail="Profissional já vinculado a outra loja. Desvincule antes de aceitar este convite.",
         )
-    )
-    link = result.scalar_one_or_none()
 
-    if link is not None and link.deleted_at is None:
-        raise HTTPException(status_code=409, detail="Profissional já vinculado a esta loja")
-
-    if link is not None:
-        link.deleted_at = None
-        link.is_active = True
-    else:
-        link = ProfessionalStore(professional_id=professional_id, store_id=store_id)
-        db.add(link)
-
+    professional = Professional(user_id=user.id, store_id=store_id)
+    db.add(professional)
     await db.flush()
-    return link
+    return professional

@@ -7,8 +7,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
 from app.core.config import settings
-from app.models.user import User
+from app.models.professional import Professional
+from app.models.user import User, RoleEnum
 from app.schemas.auth import LoginRequest, RegisterRequest
+
+
+async def register_professional(
+        db: AsyncSession, data: RegisterRequest,
+) -> bool:
+    result = await db.execute(
+        select(User).where(
+            User.email == data.email,
+            User.deleted_at.is_(None),
+        )
+    )
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Email já cadastrado")
+
+    user = User(
+        name=data.name,
+        email=data.email,
+        password_hash=security.hash_password(data.password),
+        role=RoleEnum.professional,
+        phone=data.phone,
+        accepted_terms_at=datetime.now(timezone.utc),
+        accepted_terms_version=settings.current_terms_version,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    professional = Professional(
+        user.id,
+
+    )
+    return True
 
 
 async def register(db: AsyncSession, data: RegisterRequest) -> tuple[str, str, User]:
@@ -40,7 +73,7 @@ async def register(db: AsyncSession, data: RegisterRequest) -> tuple[str, str, U
 
 
 async def login(
-    db: AsyncSession, data: LoginRequest
+        db: AsyncSession, data: LoginRequest
 ) -> tuple[str, str, User]:
     result = await db.execute(
         select(User).where(
@@ -61,7 +94,7 @@ async def login(
 
 
 async def refresh(
-    db: AsyncSession, refresh_token: str
+        db: AsyncSession, refresh_token: str
 ) -> tuple[str, User]:
     try:
         payload = security.decode_token(refresh_token)

@@ -1,63 +1,51 @@
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models.offering import Offering
-from app.models.professional_store import ProfessionalStore
+from app.models.professional import Professional
 from app.models.service import Service
 from app.models.store import Store
 from app.models.user import User
-from app.schemas.store import StoreCreate, StoreOfferingPublic, StorePublic, StoreUpdate
+from app.schemas.store import StoreCreate, StorePublic, StoreServicePublic, StoreUpdate
 
 
 async def list_stores(db: AsyncSession) -> list[StorePublic]:
-    # Cria uma subquery para ser usada dentro do execute abaixo
     professional_count_sq = (
-        select(func.count(ProfessionalStore.id))
+        select(func.count(Professional.id))
         .where(
-            ProfessionalStore.store_id == Store.id,
-            ProfessionalStore.deleted_at.is_(None),
-        )
-        .correlate(Store) # É o comando usado para dizer "Esse STORE não pertence a essa query, mas sim do query pai usada abaixo no execute"
-        .scalar_subquery() # Transforma o select numa subquery que retorna um único valor
-    )
-    # Cria uma subquery para ser usada dentro do execute abaixo
-    service_count_sq = (
-        select(func.count(Offering.id))
-        .join(ProfessionalStore, Offering.professional_store_id == ProfessionalStore.id)
-        .where(
-            ProfessionalStore.store_id == Store.id,
-            Offering.is_enabled.is_(True),
-            Offering.deleted_at.is_(None),
-            ProfessionalStore.deleted_at.is_(None),
+            Professional.store_id == Store.id,
+            Professional.deleted_at.is_(None),
         )
         .correlate(Store)
         .scalar_subquery()
     )
-
-    filters = [
-        Store.deleted_at.is_(None),
-        Store.is_active.is_(True),
-    ]
+    service_count_sq = (
+        select(func.count(Service.id))
+        .join(Professional, Professional.id == Service.professional_id)
+        .where(
+            Professional.store_id == Store.id,
+            Professional.deleted_at.is_(None),
+            Service.deleted_at.is_(None),
+            Service.is_active.is_(True),
+        )
+        .correlate(Store)
+        .scalar_subquery()
+    )
 
     result = await db.execute(
         select(
             Store,
             professional_count_sq.label("professional_count"),
             service_count_sq.label("service_count"),
-        ).where(*filters)
+        ).where(
+            Store.deleted_at.is_(None),
+            Store.is_active.is_(True),
+        )
     )
 
-    # Alternativa mais curta — evita listar todos os campos manualmente:
-    # return [
-    #     StorePublic.model_validate(store).model_copy(
-    #         update={"professional_count": prof_count, "service_count": svc_count}
-    #     )
-    #     for store, prof_count, svc_count in result.all()
-    # ]
     return [
         StorePublic(
             id=store.id,
@@ -81,22 +69,22 @@ async def list_stores(db: AsyncSession) -> list[StorePublic]:
 
 async def list_my_stores(db: AsyncSession, owner_id: str) -> list[StorePublic]:
     professional_count_sq = (
-        select(func.count(ProfessionalStore.id))
+        select(func.count(Professional.id))
         .where(
-            ProfessionalStore.store_id == Store.id,
-            ProfessionalStore.deleted_at.is_(None),
+            Professional.store_id == Store.id,
+            Professional.deleted_at.is_(None),
         )
         .correlate(Store)
         .scalar_subquery()
     )
     service_count_sq = (
-        select(func.count(Offering.id))
-        .join(ProfessionalStore, Offering.professional_store_id == ProfessionalStore.id)
+        select(func.count(Service.id))
+        .join(Professional, Professional.id == Service.professional_id)
         .where(
-            ProfessionalStore.store_id == Store.id,
-            Offering.is_enabled.is_(True),
-            Offering.deleted_at.is_(None),
-            ProfessionalStore.deleted_at.is_(None),
+            Professional.store_id == Store.id,
+            Professional.deleted_at.is_(None),
+            Service.deleted_at.is_(None),
+            Service.is_active.is_(True),
         )
         .correlate(Store)
         .scalar_subquery()
@@ -153,10 +141,10 @@ async def create_store(db: AsyncSession, data: StoreCreate, owner_id: str) -> St
 
 
 async def update_store(
-        db: AsyncSession,
-        store_id: str,
-        data: StoreUpdate,
-        current_user: User,
+    db: AsyncSession,
+    store_id: str,
+    data: StoreUpdate,
+    current_user: User,
 ) -> Store:
     store = await get_store(db, store_id)
     if store.owner_id != current_user.id:
@@ -169,9 +157,9 @@ async def update_store(
 
 
 async def delete_store(
-        db: AsyncSession,
-        store_id: str,
-        current_user: User,
+    db: AsyncSession,
+    store_id: str,
+    current_user: User,
 ) -> None:
     store = await get_store(db, store_id)
     if store.owner_id != current_user.id:
@@ -180,40 +168,45 @@ async def delete_store(
     await db.commit()
 
 
-async def list_store_offerings(db: AsyncSession, store_id: str) -> list[StoreOfferingPublic]:
+async def list_store_services(db: AsyncSession, store_id: str) -> list[StoreServicePublic]:
     await get_store(db, store_id)
 
     result = await db.execute(
-        select(
-            Service.id.label("service_id"),
-            Service.name.label("service_name"),
-            func.min(
-                func.coalesce(Offering.price_override, Service.default_price)
-            ).label("effective_price"),
-            func.min(
-                func.coalesce(Offering.duration_override, Service.default_duration_minutes)
-            ).label("effective_duration_minutes"),
+        select(Professional)
+        .options(
+            selectinload(Professional.user),
         )
-        .join(Offering, Offering.service_id == Service.id)
-        .join(ProfessionalStore, ProfessionalStore.id == Offering.professional_store_id)
         .where(
-            ProfessionalStore.store_id == store_id,
-            ProfessionalStore.deleted_at.is_(None),
-            ProfessionalStore.is_active.is_(True),
-            Offering.is_enabled.is_(True),
-            Offering.deleted_at.is_(None),
-            Service.deleted_at.is_(None),
+            Professional.store_id == store_id,
+            Professional.deleted_at.is_(None),
+            Professional.is_active.is_(True),
         )
-        .group_by(Service.id, Service.name)
-        .order_by(Service.name)
     )
-    rows = result.mappings().all()
+    professionals = result.scalars().all()
+
+    if not professionals:
+        return []
+
+    professional_ids = [p.id for p in professionals]
+    prof_by_id = {p.id: p for p in professionals}
+
+    svc_result = await db.execute(
+        select(Service).where(
+            Service.professional_id.in_(professional_ids),
+            Service.deleted_at.is_(None),
+            Service.is_active.is_(True),
+        ).order_by(Service.name)
+    )
+    services = svc_result.scalars().all()
+
     return [
-        StoreOfferingPublic(
-            service_id=row["service_id"],
-            service_name=row["service_name"],
-            effective_price=row["effective_price"],
-            effective_duration_minutes=row["effective_duration_minutes"],
+        StoreServicePublic(
+            service_id=s.id,
+            service_name=s.name,
+            price=s.price,
+            duration_minutes=s.duration_minutes,
+            professional_id=s.professional_id,
+            professional_name=prof_by_id[s.professional_id].user.name,
         )
-        for row in rows
+        for s in services
     ]
