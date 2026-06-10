@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr
 
-from app.schemas.professional import ProfessionalStorePublic
+from app.schemas.professional import ProfessionalWithStorePublic
 
 
 class InviteCreatedResponse(BaseModel):
@@ -26,6 +26,6 @@ class InviteAcceptRequest(BaseModel):
 
 
 class InviteAcceptResponse(BaseModel):
-    professional_store: ProfessionalStorePublic
+    professional: ProfessionalWithStorePublic
     access_token: str | None = None
     refresh_token: str | None = None
