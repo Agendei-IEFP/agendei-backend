@@ -5,10 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import security
 from app.models.professional import Professional
 from app.models.store import Store
-from app.models.user import User
-from app.schemas.professional import ProfessionalSelfCreate, ProfessionalUpdate, ProfessionalWithNamePublic
+from app.models.user import RoleEnum, User
+from app.schemas.professional import ProfessionalCreate, ProfessionalSelfCreate, ProfessionalUpdate, ProfessionalWithNamePublic
 from app.services.store_service import get_store
 
 
@@ -64,6 +65,55 @@ async def add_admin_as_professional(
         .where(Professional.id == professional.id)
     )
     return result.scalar_one()
+
+
+async def create_professional(
+    db: AsyncSession,
+    store_id: str,
+    data: ProfessionalCreate,
+    admin: User,
+) -> ProfessionalWithNamePublic:
+    store = await get_store(db, store_id)
+
+    if store.owner_id != admin.id:
+        raise HTTPException(status_code=403, detail="Apenas o dono da loja pode registar profissionais")
+
+    existing = await db.execute(
+        select(User).where(User.email == data.email, User.deleted_at.is_(None))
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Email já cadastrado")
+
+    user = User(
+        name=data.name,
+        email=data.email,
+        password_hash=security.hash_password(data.password),
+        phone=data.phone,
+        role=RoleEnum.professional,
+    )
+    db.add(user)
+    await db.flush()
+
+    professional = Professional(user_id=user.id, store_id=store_id)
+    db.add(professional)
+    await db.commit()
+
+    result = await db.execute(
+        select(Professional)
+        .options(selectinload(Professional.user))
+        .where(Professional.id == professional.id)
+    )
+    professional = result.scalar_one()
+
+    return ProfessionalWithNamePublic(
+        id=professional.id,
+        user_id=professional.user_id,
+        store_id=professional.store_id,
+        name=professional.user.name,
+        bio=professional.bio,
+        photo_url=professional.photo_url,
+        is_active=professional.is_active,
+    )
 
 
 async def list_store_professionals(

@@ -5,6 +5,7 @@ from app.core.dependencies import require_role
 from app.db.session import get_db
 from app.models.user import RoleEnum, User
 from app.schemas.professional import (
+    ProfessionalCreate,
     ProfessionalPublic,
     ProfessionalSelfCreate,
     ProfessionalWithNamePublic,
@@ -23,6 +24,16 @@ async def add_admin_as_professional(
     admin: User = Depends(require_role(RoleEnum.store_admin)),
 ):
     return await professional_service.add_admin_as_professional(db, store_id, data, admin)
+
+
+@router.post("", response_model=ProfessionalWithNamePublic, status_code=status.HTTP_201_CREATED)
+async def create_professional(
+    store_id: str,
+    data: ProfessionalCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_role(RoleEnum.store_admin)),
+):
+    return await professional_service.create_professional(db, store_id, data, admin)
 
 
 @router.get("", response_model=list[ProfessionalWithNamePublic])
