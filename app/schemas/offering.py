@@ -1,62 +1,30 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Optional
-
+from typing import Optional
 from pydantic import BaseModel, ConfigDict, computed_field, field_validator
-
 from app.schemas.service import ServicePublic
+from app.schemas.validators import validate_duration, validate_price
 
-
-def _validate_duration(v: int | None) -> int | None:
-    if v is not None and v < 15:
-        raise ValueError("A duração mínima é de 15 minutos")
-    return v
-
-
-def _validate_price(v: Decimal | None) -> Decimal | None:
-    if v is not None and v < 0:
-        raise ValueError("O preço não pode ser negativo")
-    return v
-
-
-class OfferingCreate(BaseModel):
-    service_id: str
-    price_override: Decimal | None = None
-    duration_override: int | None = None
-
-    @field_validator("duration_override")
-    @classmethod
-    def minimum_duration(cls, v: int | None) -> int | None:
-        return _validate_duration(v)
-
-    @field_validator("price_override")
-    @classmethod
-    def positive_price(cls, v: Decimal | None) -> Decimal | None:
-        return _validate_price(v)
-
-
-class OfferingUpdate(BaseModel):
-    # Optional[X] instead of X | None so that an explicit null in JSON
-    # is preserved through model_dump(exclude_unset=True), allowing the
-    # caller to clear an override back to the service default.
+class OfferingBase(BaseModel):
     price_override: Optional[Decimal] = None
     duration_override: Optional[int] = None
-    is_enabled: bool | None = None
 
     @field_validator("duration_override")
     @classmethod
-    def minimum_duration(cls, v: int | None) -> int | None:
-        return _validate_duration(v)
+    def min_dur(cls, v: int | None) -> int | None: return validate_duration(v)
 
     @field_validator("price_override")
     @classmethod
-    def positive_price(cls, v: Decimal | None) -> Decimal | None:
-        return _validate_price(v)
+    def pos_prc(cls, v: Decimal | None) -> Decimal | None: return validate_price(v)
 
+class OfferingCreate(OfferingBase):
+    service_id: str
+
+class OfferingUpdate(OfferingBase):
+    is_enabled: bool | None = None
 
 class OfferingPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: str
     service_id: str
     professional_store_id: str
