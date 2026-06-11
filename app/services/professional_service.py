@@ -76,7 +76,7 @@ async def create_professional(
     store = await get_store(db, store_id)
 
     if store.owner_id != admin.id:
-        raise HTTPException(status_code=403, detail="Apenas o dono da loja pode registar profissionais")
+        raise HTTPException(status_code=403, detail="Apenas o dono da loja pode registrar profissionais")
 
     existing = await db.execute(
         select(User).where(User.email == data.email, User.deleted_at.is_(None))
@@ -97,11 +97,12 @@ async def create_professional(
     professional = Professional(user_id=user.id, store_id=store_id)
     db.add(professional)
     await db.commit()
+    professional_id = professional.id
 
     result = await db.execute(
         select(Professional)
         .options(selectinload(Professional.user))
-        .where(Professional.id == professional.id)
+        .where(Professional.id == professional_id)
     )
     professional = result.scalar_one()
 
