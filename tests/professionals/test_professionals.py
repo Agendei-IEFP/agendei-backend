@@ -1,3 +1,5 @@
+import uuid
+
 from httpx import AsyncClient
 
 STORES_URL = "/api/v1/stores"
@@ -341,18 +343,16 @@ async def test_list_my_professional_stores_unauthenticated(client: AsyncClient):
     assert response.status_code == 401
 
 
-VALID_PROFESSIONAL = {
-    "name": "Maria Profissional",
-    "email": "maria@pro.com",
-    "password": "Senha@123",
-    "phone": "11999999999",
-}
-
-MINIMAL_PROFESSIONAL = {
-    "name": "João Pro",
-    "email": "joao@pro.com",
-    "password": "Senha@123",
-}
+def _make_professional_payload(**overrides: object) -> dict:
+    unique = uuid.uuid4().hex[:8]
+    base = {
+        "name": "Maria Profissional",
+        "email": f"pro+{unique}@example.com",
+        "password": "Senha@123",
+        "phone": "11999999999",
+    }
+    base.update(overrides)
+    return base
 
 
 # ---------------------------------------------------------------------------
@@ -363,15 +363,16 @@ MINIMAL_PROFESSIONAL = {
 async def test_create_professional_success(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
+    payload = _make_professional_payload()
 
     response = await client.post(
         f"{STORES_URL}/{store_id}/professionals",
-        json=VALID_PROFESSIONAL,
+        json=payload,
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 201
     body = response.json()
-    assert body["name"] == VALID_PROFESSIONAL["name"]
+    assert body["name"] == payload["name"]
     assert body["store_id"] == store_id
     assert body["is_active"] is True
     assert "id" in body
@@ -382,15 +383,16 @@ async def test_create_professional_success(client: AsyncClient):
 async def test_create_professional_minimal_payload(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
+    payload = _make_professional_payload(phone=None)
 
     response = await client.post(
         f"{STORES_URL}/{store_id}/professionals",
-        json=MINIMAL_PROFESSIONAL,
+        json=payload,
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 201
     body = response.json()
-    assert body["name"] == MINIMAL_PROFESSIONAL["name"]
+    assert body["name"] == payload["name"]
     assert body["bio"] is None
     assert body["photo_url"] is None
 
@@ -399,10 +401,11 @@ async def test_create_professional_not_owner(client: AsyncClient):
     admin_token = await _get_token(client, ADMIN_USER)
     other_token = await _get_token(client, OTHER_ADMIN_USER)
     store_id = await _create_store(client, admin_token)
+    payload = _make_professional_payload()
 
     response = await client.post(
         f"{STORES_URL}/{store_id}/professionals",
-        json=VALID_PROFESSIONAL,
+        json=payload,
         headers={"Authorization": f"Bearer {other_token}"},
     )
     assert response.status_code == 403
@@ -411,15 +414,17 @@ async def test_create_professional_not_owner(client: AsyncClient):
 async def test_create_professional_duplicate_email(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
+    payload = _make_professional_payload()
 
-    await client.post(
+    first = await client.post(
         f"{STORES_URL}/{store_id}/professionals",
-        json=VALID_PROFESSIONAL,
+        json=payload,
         headers={"Authorization": f"Bearer {token}"},
     )
+    assert first.status_code == 201
     response = await client.post(
         f"{STORES_URL}/{store_id}/professionals",
-        json=VALID_PROFESSIONAL,
+        json=payload,
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 409
@@ -428,10 +433,11 @@ async def test_create_professional_duplicate_email(client: AsyncClient):
 async def test_create_professional_unauthenticated(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
+    payload = _make_professional_payload()
 
     response = await client.post(
         f"{STORES_URL}/{store_id}/professionals",
-        json=VALID_PROFESSIONAL,
+        json=payload,
     )
     assert response.status_code == 401
 
@@ -440,10 +446,11 @@ async def test_create_professional_client_role_forbidden(client: AsyncClient):
     admin_token = await _get_token(client, ADMIN_USER)
     client_token = await _get_token(client, CLIENT_USER)
     store_id = await _create_store(client, admin_token)
+    payload = _make_professional_payload()
 
     response = await client.post(
         f"{STORES_URL}/{store_id}/professionals",
-        json=VALID_PROFESSIONAL,
+        json=payload,
         headers={"Authorization": f"Bearer {client_token}"},
     )
     assert response.status_code == 403
