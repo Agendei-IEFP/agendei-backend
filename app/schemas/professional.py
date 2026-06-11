@@ -1,8 +1,22 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 from app.schemas.store import StorePublic
+
+
+class ProfessionalCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    phone: str | None = None
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("A senha deve ter no mínimo 8 caracteres")
+        return v
 
 
 class ProfessionalSelfCreate(BaseModel):

@@ -339,3 +339,111 @@ async def test_list_my_professional_stores_with_link(client: AsyncClient):
 async def test_list_my_professional_stores_unauthenticated(client: AsyncClient):
     response = await client.get(f"{ME_URL}/professional-stores")
     assert response.status_code == 401
+
+
+VALID_PROFESSIONAL = {
+    "name": "Maria Profissional",
+    "email": "maria@pro.com",
+    "password": "Senha@123",
+    "phone": "11999999999",
+}
+
+MINIMAL_PROFESSIONAL = {
+    "name": "João Pro",
+    "email": "joao@pro.com",
+    "password": "Senha@123",
+}
+
+
+# ---------------------------------------------------------------------------
+# POST /stores/{store_id}/professionals — admin registers a professional
+# ---------------------------------------------------------------------------
+
+
+async def test_create_professional_success(client: AsyncClient):
+    token = await _get_token(client, ADMIN_USER)
+    store_id = await _create_store(client, token)
+
+    response = await client.post(
+        f"{STORES_URL}/{store_id}/professionals",
+        json=VALID_PROFESSIONAL,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == VALID_PROFESSIONAL["name"]
+    assert body["store_id"] == store_id
+    assert body["is_active"] is True
+    assert "id" in body
+    assert "user_id" in body
+    assert "deleted_at" not in body
+
+
+async def test_create_professional_minimal_payload(client: AsyncClient):
+    token = await _get_token(client, ADMIN_USER)
+    store_id = await _create_store(client, token)
+
+    response = await client.post(
+        f"{STORES_URL}/{store_id}/professionals",
+        json=MINIMAL_PROFESSIONAL,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == MINIMAL_PROFESSIONAL["name"]
+    assert body["bio"] is None
+    assert body["photo_url"] is None
+
+
+async def test_create_professional_not_owner(client: AsyncClient):
+    admin_token = await _get_token(client, ADMIN_USER)
+    other_token = await _get_token(client, OTHER_ADMIN_USER)
+    store_id = await _create_store(client, admin_token)
+
+    response = await client.post(
+        f"{STORES_URL}/{store_id}/professionals",
+        json=VALID_PROFESSIONAL,
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert response.status_code == 403
+
+
+async def test_create_professional_duplicate_email(client: AsyncClient):
+    token = await _get_token(client, ADMIN_USER)
+    store_id = await _create_store(client, token)
+
+    await client.post(
+        f"{STORES_URL}/{store_id}/professionals",
+        json=VALID_PROFESSIONAL,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    response = await client.post(
+        f"{STORES_URL}/{store_id}/professionals",
+        json=VALID_PROFESSIONAL,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 409
+
+
+async def test_create_professional_unauthenticated(client: AsyncClient):
+    token = await _get_token(client, ADMIN_USER)
+    store_id = await _create_store(client, token)
+
+    response = await client.post(
+        f"{STORES_URL}/{store_id}/professionals",
+        json=VALID_PROFESSIONAL,
+    )
+    assert response.status_code == 401
+
+
+async def test_create_professional_client_role_forbidden(client: AsyncClient):
+    admin_token = await _get_token(client, ADMIN_USER)
+    client_token = await _get_token(client, CLIENT_USER)
+    store_id = await _create_store(client, admin_token)
+
+    response = await client.post(
+        f"{STORES_URL}/{store_id}/professionals",
+        json=VALID_PROFESSIONAL,
+        headers={"Authorization": f"Bearer {client_token}"},
+    )
+    assert response.status_code == 403
