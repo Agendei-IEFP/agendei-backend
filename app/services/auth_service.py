@@ -10,11 +10,20 @@ from app.core.config import settings
 from app.models.professional import Professional
 from app.models.user import User, RoleEnum
 from app.schemas.auth import LoginRequest, RegisterRequest
+from app.services.store_service import get_store
 
 
 async def register_professional(
-        db: AsyncSession, data: RegisterRequest,
+        data: RegisterRequest,
+        store_id: str,
+        admin: User,
+        db: AsyncSession,
 ) -> bool:
+    store = await get_store(db, store_id)
+
+    if store.owner_id != admin.id:
+        raise HTTPException(status_code=403, detail="Apenas o dono da loja pode adicionar um novo profissional")
+
     result = await db.execute(
         select(User).where(
             User.email == data.email,
@@ -39,8 +48,12 @@ async def register_professional(
 
     professional = Professional(
         user.id,
-
+        store_id=store_id,
     )
+    db.add(professional)
+    await db.commit()
+    await db.refresh(professional)
+
     return True
 
 
