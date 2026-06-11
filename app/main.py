@@ -10,7 +10,6 @@ from app.routers.professional_nested import (
     schedules_router,
 )
 from app.routers.appointments import router as appointments_router
-from app.routers.invites import router as invites_router
 from app.routers.me import router as me_router
 from app.routers.services import router as services_router
 
@@ -36,6 +35,5 @@ app.include_router(professionals_router,  prefix=PREFIX)
 app.include_router(prof_endpoints_router, prefix=PREFIX)
 app.include_router(schedules_router,      prefix=PREFIX)
 app.include_router(appointments_router,   prefix=PREFIX)
-app.include_router(invites_router,        prefix=PREFIX)
 app.include_router(me_router,             prefix=PREFIX)
 app.include_router(services_router,       prefix=PREFIX)
