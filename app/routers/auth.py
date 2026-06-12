@@ -2,9 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.dependencies import require_role
 from app.db.session import get_db
-from app.models.user import RoleEnum, User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserPublic
 from app.services import auth_service
@@ -41,16 +39,6 @@ async def register(
         access_token=access_token,
         user=UserPublic.model_validate(usuario),
     )
-
-
-@router.post("/register-professional", response_model=bool, status_code=201)
-async def register_professional(
-        data: RegisterRequest,
-        store_id: str,
-        admin: User = Depends(require_role(RoleEnum.store_admin)),
-        db: AsyncSession = Depends(get_db),
-):
-    return await auth_service.register_professional(db, data, store_id, admin)
 
 
 @router.post("/login", response_model=TokenResponse)

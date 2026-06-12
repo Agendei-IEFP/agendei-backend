@@ -7,54 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
 from app.core.config import settings
-from app.models.professional import Professional
-from app.models.user import User, RoleEnum
+from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest
-from app.services.store_service import get_store
-
-
-async def register_professional(
-        data: RegisterRequest,
-        store_id: str,
-        admin: User,
-        db: AsyncSession,
-) -> bool:
-    store = await get_store(db, store_id)
-
-    if store.owner_id != admin.id:
-        raise HTTPException(status_code=403, detail="Apenas o dono da loja pode adicionar um novo profissional")
-
-    result = await db.execute(
-        select(User).where(
-            User.email == data.email,
-            User.deleted_at.is_(None),
-        )
-    )
-    if result.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=409, detail="Email já cadastrado")
-
-    user = User(
-        name=data.name,
-        email=data.email,
-        password_hash=security.hash_password(data.password),
-        role=RoleEnum.professional,
-        phone=data.phone,
-        accepted_terms_at=datetime.now(timezone.utc),
-        accepted_terms_version=settings.current_terms_version,
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-
-    professional = Professional(
-        user.id,
-        store_id=store_id,
-    )
-    db.add(professional)
-    await db.commit()
-    await db.refresh(professional)
-
-    return True
 
 
 async def register(db: AsyncSession, data: RegisterRequest) -> tuple[str, str, User]:
