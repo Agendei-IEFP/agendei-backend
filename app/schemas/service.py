@@ -3,17 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-
-def _validate_duration(v: int | None) -> int | None:
-    if v is not None and v < 15:
-        raise ValueError("A duração mínima é de 15 minutos")
-    return v
-
-
-def _validate_price(v: Decimal | None) -> Decimal | None:
-    if v is not None and v < 0:
-        raise ValueError("O preço não pode ser negativo")
-    return v
+from app.schemas.validators import validate_duration, validate_price
 
 
 class ServiceCreate(BaseModel):
@@ -47,12 +37,12 @@ class ServiceUpdate(BaseModel):
     @field_validator("duration_minutes")
     @classmethod
     def minimum_duration(cls, v: int | None) -> int | None:
-        return _validate_duration(v)
+        return validate_duration(v)
 
     @field_validator("price")
     @classmethod
     def positive_price(cls, v: Decimal | None) -> Decimal | None:
-        return _validate_price(v)
+        return validate_price(v)
 
 
 class ServicePublic(BaseModel):
