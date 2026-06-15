@@ -7,7 +7,7 @@ from app.models.user import RoleEnum, User
 from app.schemas.appointment import AppointmentClientPublic, AppointmentPublic, AppointmentProfessionalPublic
 from app.schemas.professional import ProfessionalPublic, ProfessionalUpdate, ProfessionalWithStorePublic
 from app.schemas.store import StorePublic
-from app.schemas.user import UserPublic, UserUpdate
+from app.schemas.user import PasswordChange, UserPublic, UserUpdate
 from app.services import appointment_service, professional_service, store_service, user_service
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -35,6 +35,25 @@ async def delete_my_user(
     current_user: User = Depends(get_current_user),
 ):
     await user_service.delete_user(db, current_user)
+    return Response(status_code=204)
+
+
+@router.patch("/password", status_code=204)
+async def change_my_password(
+    data: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await user_service.change_password(db, current_user, data)
+    return Response(status_code=204)
+
+
+@router.post("/anonymize", status_code=204)
+async def anonymize_my_account(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await user_service.anonymize_user(db, current_user)
     return Response(status_code=204)
 
 
