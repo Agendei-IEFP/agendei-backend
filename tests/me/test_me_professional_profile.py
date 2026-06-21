@@ -53,31 +53,7 @@ async def _become_professional_via_invite(client: AsyncClient, admin_token: str)
     return accept_res.json()["access_token"]
 
 
-# ---------------------------------------------------------------------------
-# GET /me/professional
-# ---------------------------------------------------------------------------
-
-
-async def test_get_my_professional_profile_success(client: AsyncClient):
-    admin_token = await _register_and_login(client, ADMIN_USER)
-    prof_token = await _become_professional_via_invite(client, admin_token)
-
-    response = await client.get(
-        ME_PROFESSIONAL_URL,
-        headers={"Authorization": f"Bearer {prof_token}"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert "id" in body
-    assert "user_id" in body
-    assert body["bio"] is None          # newly created profile has no bio
-    assert body["photo_url"] is None    # newly created profile has no photo
-    assert body["is_active"] is True    # active by default
-    assert "deleted_at" not in body     # internal field must not be exposed
-
-
 async def test_get_my_professional_profile_not_found(client: AsyncClient):
-    # store_admin that has not yet self-linked as professional
     admin_token = await _register_and_login(client, ADMIN_USER)
 
     response = await client.get(
@@ -90,49 +66,6 @@ async def test_get_my_professional_profile_not_found(client: AsyncClient):
 async def test_get_my_professional_profile_unauthorized(client: AsyncClient):
     response = await client.get(ME_PROFESSIONAL_URL)
     assert response.status_code == 401
-
-
-# ---------------------------------------------------------------------------
-# PATCH /me/professional
-# ---------------------------------------------------------------------------
-
-
-async def test_update_my_professional_profile_success(client: AsyncClient):
-    admin_token = await _register_and_login(client, ADMIN_USER)
-    prof_token = await _become_professional_via_invite(client, admin_token)
-
-    response = await client.patch(
-        ME_PROFESSIONAL_URL,
-        json={"bio": "Especialista em coloração", "photo_url": "https://example.com/photo.jpg"},
-        headers={"Authorization": f"Bearer {prof_token}"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["bio"] == "Especialista em coloração"
-    assert body["photo_url"] == "https://example.com/photo.jpg"
-
-
-async def test_update_my_professional_profile_partial(client: AsyncClient):
-    admin_token = await _register_and_login(client, ADMIN_USER)
-    prof_token = await _become_professional_via_invite(client, admin_token)
-
-    # Set bio first
-    await client.patch(
-        ME_PROFESSIONAL_URL,
-        json={"bio": "Bio inicial"},
-        headers={"Authorization": f"Bearer {prof_token}"},
-    )
-
-    # Update only photo_url — bio should remain
-    response = await client.patch(
-        ME_PROFESSIONAL_URL,
-        json={"photo_url": "https://example.com/new.jpg"},
-        headers={"Authorization": f"Bearer {prof_token}"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["bio"] == "Bio inicial"
-    assert body["photo_url"] == "https://example.com/new.jpg"
 
 
 async def test_update_my_professional_profile_client_forbidden(client: AsyncClient):

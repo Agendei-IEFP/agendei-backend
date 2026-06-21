@@ -31,6 +31,4 @@ def create_refresh_token(data: dict) -> str:
 
 
 def decode_token(token: str) -> dict:
-    # Raises jose.JWTError on invalid signature, expiry, or malformed token.
-    # Caller is responsible for catching and converting to HTTPException.
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])

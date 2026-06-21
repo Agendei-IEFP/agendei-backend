@@ -56,7 +56,7 @@ async def list_my_services(db: AsyncSession, user: User) -> list[Service]:
 
 
 async def update_service(
-    db: AsyncSession, service_id: str, data: ServiceUpdate, user: User
+        db: AsyncSession, service_id: str, data: ServiceUpdate, user: User
 ) -> Service:
     service = await get_service(db, service_id)
     professional = await _get_professional_for_user(db, user)

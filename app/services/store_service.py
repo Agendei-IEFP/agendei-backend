@@ -141,10 +141,10 @@ async def create_store(db: AsyncSession, data: StoreCreate, owner_id: str) -> St
 
 
 async def update_store(
-    db: AsyncSession,
-    store_id: str,
-    data: StoreUpdate,
-    current_user: User,
+        db: AsyncSession,
+        store_id: str,
+        data: StoreUpdate,
+        current_user: User,
 ) -> Store:
     store = await get_store(db, store_id)
     if store.owner_id != current_user.id:
@@ -157,9 +157,9 @@ async def update_store(
 
 
 async def delete_store(
-    db: AsyncSession,
-    store_id: str,
-    current_user: User,
+        db: AsyncSession,
+        store_id: str,
+        current_user: User,
 ) -> None:
     store = await get_store(db, store_id)
     if store.owner_id != current_user.id:

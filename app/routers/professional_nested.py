@@ -21,9 +21,6 @@ schedules_router = APIRouter(
 )
 
 
-# ---------------------------------------------------------------------------
-# Professional-level
-# ---------------------------------------------------------------------------
 @professionals_router.get("/appointments", response_model=list[AppointmentPublic])
 async def list_professional_appointments(
         professional_id: str,
@@ -45,9 +42,6 @@ async def list_available_slots(
     )
 
 
-# ---------------------------------------------------------------------------
-# Work schedules
-# ---------------------------------------------------------------------------
 @schedules_router.get("", response_model=list[WorkSchedulePublic])
 async def list_work_schedules(professional_id: str, db: AsyncSession = Depends(get_db)):
     return await work_schedule_service.list_work_schedules(db, professional_id)

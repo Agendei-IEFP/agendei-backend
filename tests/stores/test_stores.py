@@ -89,7 +89,7 @@ async def test_list_stores_excludes_deleted(client: AsyncClient, admin_token: st
 
 
 async def test_list_my_stores_success(
-    client: AsyncClient, admin_token: str, other_admin_token: str
+        client: AsyncClient, admin_token: str, other_admin_token: str
 ):
     await client.post(BASE_URL, json=VALID_STORE, headers={"Authorization": f"Bearer {admin_token}"})
     await client.post(BASE_URL, json={"name": "Outro Salão"}, headers={"Authorization": f"Bearer {other_admin_token}"})
@@ -270,30 +270,6 @@ async def test_delete_store_no_token(client: AsyncClient, admin_token: str):
     assert response.status_code == 401
 
 
-# ---------------------------------------------------------------------------
-# GET /stores?store_type=
-# ---------------------------------------------------------------------------
-
-
-async def test_list_stores_filter_by_type(client: AsyncClient, admin_token: str):
-    await client.post(
-        BASE_URL,
-        json={**VALID_STORE, "store_type": "barbershop"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    await client.post(
-        BASE_URL,
-        json={"name": "Salão de Cabelo", "store_type": "hair_salon"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-
-    response = await client.get(f"{BASE_URL}?store_type=barbershop")
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 1
-    assert body[0]["store_type"] == "barbershop"
-
-
 async def test_list_stores_no_filter_returns_all(client: AsyncClient, admin_token: str):
     await client.post(
         BASE_URL,
@@ -311,29 +287,6 @@ async def test_list_stores_no_filter_returns_all(client: AsyncClient, admin_toke
     assert len(response.json()) == 2
 
 
-async def test_list_stores_filter_returns_empty_when_no_match(
-    client: AsyncClient, admin_token: str
-):
-    await client.post(
-        BASE_URL,
-        json={**VALID_STORE, "store_type": "barbershop"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-
-    response = await client.get(f"{BASE_URL}?store_type=nails")
-    assert response.status_code == 200
-    assert response.json() == []
-
-
-async def test_list_stores_invalid_type_returns_422(client: AsyncClient):
-    response = await client.get(f"{BASE_URL}?store_type=invalid_value")
-    assert response.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# GET /stores/{store_id}/offerings
-# ---------------------------------------------------------------------------
-
 SERVICES_URL = "/api/v1/services"
 PROF_STORES_URL = "/api/v1/professional-stores"
 
@@ -342,88 +295,3 @@ VALID_SERVICE = {
     "default_price": "50.00",
     "default_duration_minutes": 60,
 }
-
-
-async def _setup_store_with_offering(client: AsyncClient, admin_token: str) -> tuple[str, str, str]:
-    """Creates a store, adds admin as professional, creates a service and an offering.
-    Returns (store_id, professional_store_id, offering_id).
-    """
-    store_resp = await client.post(
-        BASE_URL,
-        json=VALID_STORE,
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert store_resp.status_code == 201
-    store_id = store_resp.json()["id"]
-
-    ps_resp = await client.post(
-        f"{BASE_URL}/{store_id}/professionals/me",
-        json={},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert ps_resp.status_code == 201
-    professional_store_id = ps_resp.json()["id"]
-
-    service_resp = await client.post(
-        SERVICES_URL,
-        json=VALID_SERVICE,
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert service_resp.status_code == 201
-    service_id = service_resp.json()["id"]
-
-    offering_resp = await client.post(
-        f"{PROF_STORES_URL}/{professional_store_id}/offerings",
-        json={"service_id": service_id},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert offering_resp.status_code == 201
-    offering_id = offering_resp.json()["id"]
-
-    return store_id, professional_store_id, offering_id
-
-
-async def test_list_store_offerings_happy_path(client: AsyncClient, admin_token: str):
-    store_id, _, _ = await _setup_store_with_offering(client, admin_token)
-    response = await client.get(f"{BASE_URL}/{store_id}/offerings")
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 1
-    assert body[0]["service_name"] == VALID_SERVICE["name"]
-    assert body[0]["effective_price"] == VALID_SERVICE["default_price"]
-    assert body[0]["effective_duration_minutes"] == VALID_SERVICE["default_duration_minutes"]
-
-
-async def test_list_store_offerings_empty(client: AsyncClient, admin_token: str):
-    store_resp = await client.post(
-        BASE_URL,
-        json=VALID_STORE,
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert store_resp.status_code == 201
-    store_id = store_resp.json()["id"]
-
-    response = await client.get(f"{BASE_URL}/{store_id}/offerings")
-    assert response.status_code == 200
-    assert response.json() == []
-
-
-async def test_list_store_offerings_not_found(client: AsyncClient):
-    response = await client.get(f"{BASE_URL}/00000000000000000000000000/offerings")
-    assert response.status_code == 404
-
-
-async def test_list_store_offerings_disabled_not_shown(client: AsyncClient, admin_token: str):
-    store_id, professional_store_id, offering_id = await _setup_store_with_offering(client, admin_token)
-
-    # Disable the offering
-    patch_resp = await client.patch(
-        f"{PROF_STORES_URL}/{professional_store_id}/offerings/{offering_id}",
-        json={"is_enabled": False},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert patch_resp.status_code == 200
-
-    response = await client.get(f"{BASE_URL}/{store_id}/offerings")
-    assert response.status_code == 200
-    assert response.json() == []

@@ -50,8 +50,6 @@ async def login(
     )
     user = result.scalar_one_or_none()
 
-    # Same message whether email doesn't exist or password is wrong —
-    # nunca revelar qual o valor que estava incorreto no login.
     if user is None or not security.verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
 

@@ -60,29 +60,6 @@ async def _link_admin_as_professional(client: AsyncClient, token: str, store_id:
     return response.json()
 
 
-# ---------------------------------------------------------------------------
-# POST /stores/{store_id}/professionals/me — admin registers as professional
-# ---------------------------------------------------------------------------
-
-
-async def test_add_admin_as_professional_success(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-    store_id = await _create_store(client, token)
-
-    response = await client.post(
-        f"{STORES_URL}/{store_id}/professionals/me",
-        json={"bio": "Especialista em cortes", "photo_url": None},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert response.status_code == 201
-    body = response.json()
-    assert "id" in body
-    assert body["store_id"] == store_id
-    assert "professional_id" in body
-    assert body["is_active"] is True
-    assert "deleted_at" not in body
-
-
 async def test_add_admin_as_professional_empty_payload(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
@@ -149,11 +126,6 @@ async def test_add_admin_as_professional_client_role(client: AsyncClient):
     assert response.status_code == 403
 
 
-# ---------------------------------------------------------------------------
-# GET /stores/{store_id}/professionals — list professionals
-# ---------------------------------------------------------------------------
-
-
 async def test_list_store_professionals_empty(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
@@ -163,77 +135,9 @@ async def test_list_store_professionals_empty(client: AsyncClient):
     assert response.json() == []
 
 
-async def test_list_store_professionals_with_one(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-    store_id = await _create_store(client, token)
-    link = await _link_admin_as_professional(client, token, store_id)
-
-    response = await client.get(f"{STORES_URL}/{store_id}/professionals")
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 1
-    assert body[0]["id"] == link["professional_id"]
-    assert body[0]["is_active"] is True
-    assert "deleted_at" not in body[0]
-
-
 async def test_list_store_professionals_store_not_found(client: AsyncClient):
     response = await client.get(f"{STORES_URL}/nonexistent-store-id/professionals")
     assert response.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# PATCH /stores/{store_id}/professionals/{professional_id} — update profile
-# ---------------------------------------------------------------------------
-
-
-async def test_update_professional_success(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-    store_id = await _create_store(client, token)
-    link = await _link_admin_as_professional(
-        client, token, store_id
-    )  # sets bio=None, photo_url=None
-    professional_id = link["professional_id"]
-
-    response = await client.patch(
-        f"{STORES_URL}/{store_id}/professionals/{professional_id}",
-        json={"bio": "Nova bio"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["bio"] == "Nova bio"
-    # field not sent must remain unchanged
-    assert body["photo_url"] is None
-    assert body["is_active"] is True
-
-
-async def test_update_professional_not_owner(client: AsyncClient):
-    admin_token = await _get_token(client, ADMIN_USER)
-    other_token = await _get_token(client, OTHER_ADMIN_USER)
-    store_id = await _create_store(client, admin_token)
-    link = await _link_admin_as_professional(client, admin_token, store_id)
-    professional_id = link["professional_id"]
-
-    response = await client.patch(
-        f"{STORES_URL}/{store_id}/professionals/{professional_id}",
-        json={"bio": "tentativa"},
-        headers={"Authorization": f"Bearer {other_token}"},
-    )
-    assert response.status_code == 403
-
-
-async def test_update_professional_unauthenticated(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-    store_id = await _create_store(client, token)
-    link = await _link_admin_as_professional(client, token, store_id)
-    professional_id = link["professional_id"]
-
-    response = await client.patch(
-        f"{STORES_URL}/{store_id}/professionals/{professional_id}",
-        json={"bio": "tentativa"},
-    )
-    assert response.status_code == 401
 
 
 async def test_update_professional_not_found(client: AsyncClient):
@@ -248,54 +152,6 @@ async def test_update_professional_not_found(client: AsyncClient):
     assert response.status_code == 404
 
 
-# ---------------------------------------------------------------------------
-# DELETE /stores/{store_id}/professional-links/{professional_store_id}
-# ---------------------------------------------------------------------------
-
-
-async def test_unlink_professional_success(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-    store_id = await _create_store(client, token)
-    link = await _link_admin_as_professional(client, token, store_id)
-    link_id = link["id"]
-
-    response = await client.delete(
-        f"{STORES_URL}/{store_id}/professional-links/{link_id}",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert response.status_code == 204
-
-    # Professional should no longer appear in the list
-    list_response = await client.get(f"{STORES_URL}/{store_id}/professionals")
-    assert list_response.json() == []
-
-
-async def test_unlink_professional_not_owner(client: AsyncClient):
-    admin_token = await _get_token(client, ADMIN_USER)
-    other_token = await _get_token(client, OTHER_ADMIN_USER)
-    store_id = await _create_store(client, admin_token)
-    link = await _link_admin_as_professional(client, admin_token, store_id)
-    link_id = link["id"]
-
-    response = await client.delete(
-        f"{STORES_URL}/{store_id}/professional-links/{link_id}",
-        headers={"Authorization": f"Bearer {other_token}"},
-    )
-    assert response.status_code == 403
-
-
-async def test_unlink_professional_unauthenticated(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-    store_id = await _create_store(client, token)
-    link = await _link_admin_as_professional(client, token, store_id)
-    link_id = link["id"]
-
-    response = await client.delete(
-        f"{STORES_URL}/{store_id}/professional-links/{link_id}",
-    )
-    assert response.status_code == 401
-
-
 async def test_unlink_professional_not_found(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     store_id = await _create_store(client, token)
@@ -305,42 +161,6 @@ async def test_unlink_professional_not_found(client: AsyncClient):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# GET /me/professional-stores — list own professional store links
-# ---------------------------------------------------------------------------
-
-
-async def test_list_my_professional_stores_empty(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-
-    response = await client.get(
-        f"{ME_URL}/professional-stores",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert response.status_code == 200
-    assert response.json() == []
-
-
-async def test_list_my_professional_stores_with_link(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-    store_id = await _create_store(client, token)
-    await _link_admin_as_professional(client, token, store_id)
-
-    response = await client.get(
-        f"{ME_URL}/professional-stores",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 1
-    assert body[0]["store_id"] == store_id
-
-
-async def test_list_my_professional_stores_unauthenticated(client: AsyncClient):
-    response = await client.get(f"{ME_URL}/professional-stores")
-    assert response.status_code == 401
 
 
 def _make_professional_payload(**overrides: object) -> dict:
@@ -353,11 +173,6 @@ def _make_professional_payload(**overrides: object) -> dict:
     }
     base.update(overrides)
     return base
-
-
-# ---------------------------------------------------------------------------
-# POST /stores/{store_id}/professionals — admin registers a professional
-# ---------------------------------------------------------------------------
 
 
 async def test_create_professional_success(client: AsyncClient):

@@ -9,7 +9,8 @@ from app.core import security
 from app.models.professional import Professional
 from app.models.store import Store
 from app.models.user import RoleEnum, User
-from app.schemas.professional import ProfessionalCreate, ProfessionalSelfCreate, ProfessionalUpdate, ProfessionalWithNamePublic
+from app.schemas.professional import ProfessionalCreate, ProfessionalSelfCreate, ProfessionalUpdate, \
+    ProfessionalWithNamePublic
 from app.services.store_service import get_store
 
 
@@ -27,10 +28,10 @@ async def get_professional(db: AsyncSession, professional_id: str) -> Profession
 
 
 async def add_admin_as_professional(
-    db: AsyncSession,
-    store_id: str,
-    data: ProfessionalSelfCreate,
-    admin: User,
+        db: AsyncSession,
+        store_id: str,
+        data: ProfessionalSelfCreate,
+        admin: User,
 ) -> Professional:
     store = await get_store(db, store_id)
 
@@ -68,10 +69,10 @@ async def add_admin_as_professional(
 
 
 async def create_professional(
-    db: AsyncSession,
-    store_id: str,
-    data: ProfessionalCreate,
-    admin: User,
+        db: AsyncSession,
+        store_id: str,
+        data: ProfessionalCreate,
+        admin: User,
 ) -> ProfessionalWithNamePublic:
     store = await get_store(db, store_id)
 
@@ -118,7 +119,7 @@ async def create_professional(
 
 
 async def list_store_professionals(
-    db: AsyncSession, store_id: str
+        db: AsyncSession, store_id: str
 ) -> list[Professional]:
     await get_store(db, store_id)
     result = await db.execute(
@@ -132,7 +133,7 @@ async def list_store_professionals(
 
 
 async def list_store_professionals_with_name(
-    db: AsyncSession, store_id: str
+        db: AsyncSession, store_id: str
 ) -> list[ProfessionalWithNamePublic]:
     await get_store(db, store_id)
     result = await db.execute(
@@ -160,11 +161,11 @@ async def list_store_professionals_with_name(
 
 
 async def update_professional(
-    db: AsyncSession,
-    store_id: str,
-    professional_id: str,
-    data: ProfessionalUpdate,
-    admin: User,
+        db: AsyncSession,
+        store_id: str,
+        professional_id: str,
+        data: ProfessionalUpdate,
+        admin: User,
 ) -> Professional:
     store = await get_store(db, store_id)
 
@@ -185,7 +186,7 @@ async def update_professional(
 
 
 async def unlink_professional_from_store(
-    db: AsyncSession, professional_id: str, store_id: str, admin: User
+        db: AsyncSession, professional_id: str, store_id: str, admin: User
 ) -> None:
     store = await get_store(db, store_id)
 
@@ -202,7 +203,7 @@ async def unlink_professional_from_store(
 
 
 async def list_my_professional_stores(
-    db: AsyncSession, user: User
+        db: AsyncSession, user: User
 ) -> list[Professional]:
     result = await db.execute(
         select(Professional)
@@ -229,7 +230,7 @@ async def get_my_profile(db: AsyncSession, user: User) -> Professional:
 
 
 async def update_my_profile(
-    db: AsyncSession, data: ProfessionalUpdate, user: User
+        db: AsyncSession, data: ProfessionalUpdate, user: User
 ) -> Professional:
     professional = await get_my_profile(db, user)
 
@@ -242,7 +243,7 @@ async def update_my_profile(
 
 
 async def list_my_professionals(
-    db: AsyncSession, admin: User
+        db: AsyncSession, admin: User
 ) -> list[Professional]:
     result = await db.execute(
         select(Professional)

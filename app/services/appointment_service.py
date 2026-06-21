@@ -21,15 +21,11 @@ from app.services.professional_service import get_professional
 from app.services.service_service import get_service
 
 
-# ---------------------------------------------------------------------------
-# Available slots algorithm
-# ---------------------------------------------------------------------------
-
 async def list_available_slots(
-    db: AsyncSession,
-    professional_id: str,
-    service_id: str,
-    query_date: date,
+        db: AsyncSession,
+        professional_id: str,
+        service_id: str,
+        query_date: date,
 ) -> list[AvailableSlot]:
     """
     Returns all free slots for a professional on a given day.
@@ -97,9 +93,9 @@ async def list_available_slots(
 
 
 def _collides(
-    start: datetime,
-    end: datetime,
-    appointments: list[Appointment],
+        start: datetime,
+        end: datetime,
+        appointments: list[Appointment],
 ) -> bool:
     for appt in appointments:
         if start < appt.ends_at and end > appt.starts_at:
@@ -107,14 +103,10 @@ def _collides(
     return False
 
 
-# ---------------------------------------------------------------------------
-# Appointment CRUD
-# ---------------------------------------------------------------------------
-
 async def create_appointment(
-    db: AsyncSession,
-    data: AppointmentCreate,
-    client: User,
+        db: AsyncSession,
+        data: AppointmentCreate,
+        client: User,
 ) -> Appointment:
     professional = await get_professional(db, data.professional_id)
     service = await get_service(db, data.service_id)
@@ -161,7 +153,7 @@ async def create_appointment(
 
 
 async def list_client_appointments(
-    db: AsyncSession, client: User
+        db: AsyncSession, client: User
 ) -> list[Appointment]:
     result = await db.execute(
         select(Appointment).where(
@@ -173,7 +165,7 @@ async def list_client_appointments(
 
 
 async def list_client_appointments_detailed(
-    db: AsyncSession, client: User
+        db: AsyncSession, client: User
 ) -> list[AppointmentClientPublic]:
     result = await db.execute(
         select(Appointment)
@@ -210,9 +202,9 @@ async def list_client_appointments_detailed(
 
 
 async def list_professional_appointments(
-    db: AsyncSession,
-    professional_id: str,
-    user: User,
+        db: AsyncSession,
+        professional_id: str,
+        user: User,
 ) -> list[Appointment]:
     professional = await get_professional(db, professional_id)
 
@@ -255,10 +247,10 @@ async def get_appointment(db: AsyncSession, appointment_id: str) -> Appointment:
 
 
 async def update_status(
-    db: AsyncSession,
-    appointment_id: str,
-    data: AppointmentUpdate,
-    user: User,
+        db: AsyncSession,
+        appointment_id: str,
+        data: AppointmentUpdate,
+        user: User,
 ) -> Appointment:
     appt = await get_appointment(db, appointment_id)
     professional = await get_professional(db, appt.professional_id)
@@ -309,10 +301,10 @@ async def update_status(
 
 
 async def list_store_appointments(
-    db: AsyncSession,
-    store_id: str,
-    admin_id: str,
-    date_filter: date | None = None,
+        db: AsyncSession,
+        store_id: str,
+        admin_id: str,
+        date_filter: date | None = None,
 ) -> list[AppointmentAdminPublic]:
     store = await db.get(Store, store_id)
     if store is None or store.deleted_at is not None:

@@ -9,8 +9,6 @@ from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Cookie path scoped tightly — browser only sends the cookie to this endpoint,
-# not to every API request.
 _COOKIE_PATH = "/api/v1/auth/refresh"
 _COOKIE_MAX_AGE = settings.refresh_token_expire_days * 86400
 
@@ -20,7 +18,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         key="refresh_token",
         value=token,
         httponly=True,
-        secure=False,  # set True in production (requires HTTPS)
+        secure=False,  # setar TRUE para producao (permite apenas https)
         samesite="strict",
         max_age=_COOKIE_MAX_AGE,
         path=_COOKIE_PATH,
@@ -66,7 +64,6 @@ async def refresh(
         raise HTTPException(status_code=401, detail="Refresh token ausente")
 
     new_access_token, usuario = await auth_service.refresh(db, refresh_token)
-    # Re-set the cookie to renew its browser TTL
     _set_refresh_cookie(response, refresh_token)
     return TokenResponse(
         access_token=new_access_token,
@@ -76,11 +73,10 @@ async def refresh(
 
 @router.post("/logout", status_code=204)
 async def logout(response: Response):
-    # Path, httponly, samesite must match set_cookie exactly or browser ignores the clear
     response.delete_cookie(
         key="refresh_token",
         path=_COOKIE_PATH,
         httponly=True,
-        secure=False,
+        secure=False,  # TRUE em producao
         samesite="strict",
     )
