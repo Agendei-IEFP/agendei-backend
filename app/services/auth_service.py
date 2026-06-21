@@ -40,7 +40,7 @@ async def register(db: AsyncSession, data: RegisterRequest) -> tuple[str, str, U
 
 
 async def login(
-    db: AsyncSession, data: LoginRequest
+        db: AsyncSession, data: LoginRequest
 ) -> tuple[str, str, User]:
     result = await db.execute(
         select(User).where(
@@ -50,8 +50,6 @@ async def login(
     )
     user = result.scalar_one_or_none()
 
-    # Same message whether email doesn't exist or password is wrong —
-    # nunca revelar qual o valor que estava incorreto no login.
     if user is None or not security.verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
@@ -61,7 +59,7 @@ async def login(
 
 
 async def refresh(
-    db: AsyncSession, refresh_token: str
+        db: AsyncSession, refresh_token: str
 ) -> tuple[str, User]:
     try:
         payload = security.decode_token(refresh_token)

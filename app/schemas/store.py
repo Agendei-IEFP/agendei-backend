@@ -66,8 +66,10 @@ class StorePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class StoreOfferingPublic(BaseModel):
+class StoreServicePublic(BaseModel):
     service_id: str
     service_name: str
-    effective_price: Decimal
-    effective_duration_minutes: int
+    price: Decimal
+    duration_minutes: int
+    professional_id: str
+    professional_name: str

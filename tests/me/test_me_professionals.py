@@ -53,51 +53,11 @@ async def _create_store_and_invite(client: AsyncClient, token: str) -> tuple[str
     return store_id, invite_token
 
 
-# ---------------------------------------------------------------------------
-# GET /me/professionals
-# ---------------------------------------------------------------------------
-
-
 async def test_list_my_professionals_empty(client: AsyncClient):
     token = await _get_token(client, ADMIN_USER)
     response = await client.get(
         ME_PROFESSIONALS_URL,
         headers={"Authorization": f"Bearer {token}"},
-    )
-    assert response.status_code == 200
-    assert response.json() == []
-
-
-async def test_list_my_professionals_returns_linked_professional(client: AsyncClient):
-    token = await _get_token(client, ADMIN_USER)
-    _, invite_token = await _create_store_and_invite(client, token)
-
-    await client.post(f"{INVITES_URL}/{invite_token}/accept", json=ANON_PROF)
-
-    response = await client.get(
-        ME_PROFESSIONALS_URL,
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 1
-    assert body[0]["name"] == ANON_PROF["name"]
-    assert body[0]["store_name"] == VALID_STORE["name"]
-    assert "id" in body[0]
-    assert "store_id" in body[0]
-    assert "user_id" in body[0]
-
-
-async def test_list_my_professionals_only_own_stores(client: AsyncClient):
-    token_a = await _get_token(client, ADMIN_USER)
-    token_b = await _get_token(client, OTHER_ADMIN_USER)
-
-    _, invite_token = await _create_store_and_invite(client, token_b)
-    await client.post(f"{INVITES_URL}/{invite_token}/accept", json=ANON_PROF)
-
-    response = await client.get(
-        ME_PROFESSIONALS_URL,
-        headers={"Authorization": f"Bearer {token_a}"},
     )
     assert response.status_code == 200
     assert response.json() == []

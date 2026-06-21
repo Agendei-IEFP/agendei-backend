@@ -5,11 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import security
 from app.models.professional import Professional
-from app.models.professional_store import ProfessionalStore
 from app.models.store import Store
-from app.models.user import User
-from app.schemas.professional import ProfessionalSelfCreate, ProfessionalUpdate, ProfessionalWithNamePublic
+from app.models.user import RoleEnum, User
+from app.schemas.professional import ProfessionalCreate, ProfessionalSelfCreate, ProfessionalUpdate, \
+    ProfessionalWithNamePublic
 from app.services.store_service import get_store
 
 
@@ -26,33 +27,17 @@ async def get_professional(db: AsyncSession, professional_id: str) -> Profession
     return professional
 
 
-async def get_professional_store(
-    db: AsyncSession, professional_store_id: str
-) -> ProfessionalStore:
-    result = await db.execute(
-        select(ProfessionalStore).where(
-            ProfessionalStore.id == professional_store_id,
-            ProfessionalStore.deleted_at.is_(None),
-        )
-    )
-    link = result.scalar_one_or_none()
-    if link is None:
-        raise HTTPException(status_code=404, detail="Vínculo profissional-loja não encontrado")
-    return link
-
-
 async def add_admin_as_professional(
-    db: AsyncSession,
-    store_id: str,
-    data: ProfessionalSelfCreate,
-    admin: User,
-) -> ProfessionalStore:
+        db: AsyncSession,
+        store_id: str,
+        data: ProfessionalSelfCreate,
+        admin: User,
+) -> Professional:
     store = await get_store(db, store_id)
 
     if store.owner_id != admin.id:
         raise HTTPException(status_code=403, detail="Apenas o dono da loja pode se vincular como profissional")
 
-    # Guarantee the Professional record exists (1:1 with user)
     result = await db.execute(
         select(Professional).where(
             Professional.user_id == admin.id,
@@ -60,109 +45,127 @@ async def add_admin_as_professional(
         )
     )
     professional = result.scalar_one_or_none()
-    if professional is None:
-        professional = Professional(
-            user_id=admin.id,
-            bio=data.bio,
-            photo_url=data.photo_url,
-        )
-        db.add(professional)
-        await db.flush()
-    else:
-        if data.bio is not None:
-            professional.bio = data.bio
-        if data.photo_url is not None:
-            professional.photo_url = data.photo_url
 
-    # Create or reactivate the ProfessionalStore link (including soft-deleted)
-    result = await db.execute(
-        select(ProfessionalStore).where(
-            ProfessionalStore.professional_id == professional.id,
-            ProfessionalStore.store_id == store_id,
-        )
+    if professional is not None:
+        if professional.store_id == store_id:
+            raise HTTPException(status_code=409, detail="Você já é profissional desta loja")
+        raise HTTPException(status_code=409, detail="Você já é profissional de outra loja")
+
+    professional = Professional(
+        user_id=admin.id,
+        store_id=store_id,
+        bio=data.bio,
+        photo_url=data.photo_url,
     )
-    link = result.scalar_one_or_none()
-
-    if link is not None and link.deleted_at is None:
-        raise HTTPException(status_code=409, detail="Você já é profissional desta loja")
-
-    if link is not None:
-        # Reactivate soft-deleted link
-        link.deleted_at = None
-        link.is_active = True
-    else:
-        link = ProfessionalStore(
-            professional_id=professional.id,
-            store_id=store_id,
-        )
-        db.add(link)
-
+    db.add(professional)
     await db.commit()
 
     result = await db.execute(
-        select(ProfessionalStore)
-        .options(selectinload(ProfessionalStore.store))
-        .where(ProfessionalStore.id == link.id)
+        select(Professional)
+        .options(selectinload(Professional.store))
+        .where(Professional.id == professional.id)
     )
     return result.scalar_one()
 
 
+async def create_professional(
+        db: AsyncSession,
+        store_id: str,
+        data: ProfessionalCreate,
+        admin: User,
+) -> ProfessionalWithNamePublic:
+    store = await get_store(db, store_id)
+
+    if store.owner_id != admin.id:
+        raise HTTPException(status_code=403, detail="Apenas o dono da loja pode registrar profissionais")
+
+    existing = await db.execute(
+        select(User).where(User.email == data.email, User.deleted_at.is_(None))
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Email já cadastrado")
+
+    user = User(
+        name=data.name,
+        email=data.email,
+        password_hash=security.hash_password(data.password),
+        phone=data.phone,
+        role=RoleEnum.professional,
+    )
+    db.add(user)
+    await db.flush()
+
+    professional = Professional(user_id=user.id, store_id=store_id)
+    db.add(professional)
+    await db.commit()
+    professional_id = professional.id
+
+    result = await db.execute(
+        select(Professional)
+        .options(selectinload(Professional.user))
+        .where(Professional.id == professional_id)
+    )
+    professional = result.scalar_one()
+
+    return ProfessionalWithNamePublic(
+        id=professional.id,
+        user_id=professional.user_id,
+        store_id=professional.store_id,
+        name=professional.user.name,
+        bio=professional.bio,
+        photo_url=professional.photo_url,
+        is_active=professional.is_active,
+    )
+
+
 async def list_store_professionals(
-    db: AsyncSession, store_id: str
+        db: AsyncSession, store_id: str
 ) -> list[Professional]:
     await get_store(db, store_id)
     result = await db.execute(
-        select(Professional)
-        .join(
-            ProfessionalStore,
-            ProfessionalStore.professional_id == Professional.id,
-        )
-        .where(
-            ProfessionalStore.store_id == store_id,
-            ProfessionalStore.deleted_at.is_(None),
-            ProfessionalStore.is_active.is_(True),
+        select(Professional).where(
+            Professional.store_id == store_id,
             Professional.deleted_at.is_(None),
+            Professional.is_active.is_(True),
         )
     )
     return list(result.scalars().all())
 
 
 async def list_store_professionals_with_name(
-    db: AsyncSession, store_id: str
+        db: AsyncSession, store_id: str
 ) -> list[ProfessionalWithNamePublic]:
     await get_store(db, store_id)
     result = await db.execute(
-        select(
-            Professional.id,
-            Professional.user_id,
-            User.name,
-            Professional.bio,
-            Professional.photo_url,
-            Professional.is_active,
-            ProfessionalStore.id.label("professional_store_id"),
-        )
-        .join(User, User.id == Professional.user_id)
-        .join(
-            ProfessionalStore,
-            ProfessionalStore.professional_id == Professional.id,
-        )
+        select(Professional)
+        .options(selectinload(Professional.user))
         .where(
-            ProfessionalStore.store_id == store_id,
-            ProfessionalStore.deleted_at.is_(None),
-            ProfessionalStore.is_active.is_(True),
+            Professional.store_id == store_id,
             Professional.deleted_at.is_(None),
+            Professional.is_active.is_(True),
         )
     )
-    rows = result.mappings().all()
-    return [ProfessionalWithNamePublic(**dict(row)) for row in rows]
+    professionals = result.scalars().all()
+    return [
+        ProfessionalWithNamePublic(
+            id=p.id,
+            user_id=p.user_id,
+            store_id=p.store_id,
+            name=p.user.name,
+            bio=p.bio,
+            photo_url=p.photo_url,
+            is_active=p.is_active,
+        )
+        for p in professionals
+    ]
 
 
 async def update_professional(
-    db: AsyncSession,
-    store_id: str,
-    professional_id: str,
-    data: ProfessionalUpdate,
-    admin: User,
+        db: AsyncSession,
+        store_id: str,
+        professional_id: str,
+        data: ProfessionalUpdate,
+        admin: User,
 ) -> Professional:
     store = await get_store(db, store_id)
 
@@ -171,15 +174,7 @@ async def update_professional(
 
     professional = await get_professional(db, professional_id)
 
-    # Verify professional is linked to this store
-    result = await db.execute(
-        select(ProfessionalStore).where(
-            ProfessionalStore.professional_id == professional.id,
-            ProfessionalStore.store_id == store_id,
-            ProfessionalStore.deleted_at.is_(None),
-        )
-    )
-    if result.scalar_one_or_none() is None:
+    if professional.store_id != store_id:
         raise HTTPException(status_code=404, detail="Profissional não encontrado nesta loja")
 
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -191,38 +186,31 @@ async def update_professional(
 
 
 async def unlink_professional_from_store(
-    db: AsyncSession, professional_store_id: str, admin: User
+        db: AsyncSession, professional_id: str, store_id: str, admin: User
 ) -> None:
-    link = await get_professional_store(db, professional_store_id)
-    store = await get_store(db, link.store_id)
+    store = await get_store(db, store_id)
 
     if store.owner_id != admin.id:
         raise HTTPException(status_code=403, detail="Apenas o dono da loja pode desvincular profissionais")
 
-    link.deleted_at = datetime.now(timezone.utc)
+    professional = await get_professional(db, professional_id)
+
+    if professional.store_id != store_id:
+        raise HTTPException(status_code=404, detail="Profissional não encontrado nesta loja")
+
+    professional.deleted_at = datetime.now(timezone.utc)
     await db.commit()
 
 
-async def list_user_professional_stores(
-    db: AsyncSession, user: User
-) -> list[ProfessionalStore]:
+async def list_my_professional_stores(
+        db: AsyncSession, user: User
+) -> list[Professional]:
     result = await db.execute(
-        select(Professional).where(
+        select(Professional)
+        .options(selectinload(Professional.store), selectinload(Professional.user))
+        .where(
             Professional.user_id == user.id,
             Professional.deleted_at.is_(None),
-        )
-    )
-    professional = result.scalar_one_or_none()
-    if professional is None:
-        return []
-
-    result = await db.execute(
-        select(ProfessionalStore)
-        .options(selectinload(ProfessionalStore.store))
-        .where(
-            ProfessionalStore.professional_id == professional.id,
-            ProfessionalStore.deleted_at.is_(None),
-            ProfessionalStore.is_active.is_(True),
         )
     )
     return list(result.scalars().all())
@@ -242,7 +230,7 @@ async def get_my_profile(db: AsyncSession, user: User) -> Professional:
 
 
 async def update_my_profile(
-    db: AsyncSession, data: ProfessionalUpdate, user: User
+        db: AsyncSession, data: ProfessionalUpdate, user: User
 ) -> Professional:
     professional = await get_my_profile(db, user)
 
@@ -255,33 +243,16 @@ async def update_my_profile(
 
 
 async def list_my_professionals(
-    db: AsyncSession, admin: User
-) -> list[dict]:
+        db: AsyncSession, admin: User
+) -> list[Professional]:
     result = await db.execute(
-        select(
-            Professional.id,
-            Professional.user_id,
-            User.name,
-            Professional.bio,
-            Professional.photo_url,
-            Professional.is_active,
-            ProfessionalStore.store_id,
-            Store.name.label("store_name"),
-            ProfessionalStore.id.label("professional_store_id"),
-        )
-        .join(User, User.id == Professional.user_id)
-        .join(
-            ProfessionalStore,
-            ProfessionalStore.professional_id == Professional.id,
-        )
-        .join(Store, Store.id == ProfessionalStore.store_id)
+        select(Professional)
+        .options(selectinload(Professional.user), selectinload(Professional.store))
+        .join(Store, Store.id == Professional.store_id)
         .where(
             Store.owner_id == admin.id,
             Store.deleted_at.is_(None),
-            ProfessionalStore.deleted_at.is_(None),
-            ProfessionalStore.is_active.is_(True),
             Professional.deleted_at.is_(None),
         )
     )
-    rows = result.mappings().all()
-    return [dict(row) for row in rows]
+    return list(result.scalars().all())

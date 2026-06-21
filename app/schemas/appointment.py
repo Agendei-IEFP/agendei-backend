@@ -7,13 +7,8 @@ from app.models.appointment import StatusEnum
 
 
 class AppointmentCreate(BaseModel):
-    """
-    Client picks the professional-store binding, the offering, and a start time.
-    The owning professional is derived from professional_store_id; ends_at is
-    computed from the offering duration.
-    """
-    professional_store_id: str
-    offering_id: str
+    professional_id: str
+    service_id: str
     starts_at: datetime
 
 
@@ -28,8 +23,8 @@ class AppointmentPublic(BaseModel):
     id: str
     client_id: str
     professional_id: str
-    professional_store_id: str
-    offering_id: str
+    service_id: str
+    store_id: str
     starts_at: datetime
     ends_at: datetime
     status: StatusEnum
@@ -49,18 +44,16 @@ class AppointmentClientPublic(BaseModel):
     service_name: str | None
     professional_name: str | None
     store_name: str | None
-    effective_price: Decimal | None
-    effective_duration_minutes: int | None
+    price: Decimal | None
+    duration_minutes: int | None
 
 
 class AppointmentProfessionalPublic(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: str
     client_id: str
     professional_id: str
-    professional_store_id: str
-    offering_id: str
+    service_id: str
+    store_id: str
     starts_at: datetime
     ends_at: datetime
     status: StatusEnum
@@ -85,7 +78,7 @@ class AppointmentAdminPublic(BaseModel):
     service_name: str | None
     store_name: str | None
     duration_minutes: int | None
-    effective_price: Decimal | None
+    price: Decimal | None
 
 
 class AvailableSlot(BaseModel):

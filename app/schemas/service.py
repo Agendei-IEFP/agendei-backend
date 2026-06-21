@@ -3,33 +3,23 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-
-def _validate_duration(v: int | None) -> int | None:
-    if v is not None and v < 15:
-        raise ValueError("A duração mínima é de 15 minutos")
-    return v
-
-
-def _validate_price(v: Decimal | None) -> Decimal | None:
-    if v is not None and v < 0:
-        raise ValueError("O preço não pode ser negativo")
-    return v
+from app.schemas.validators import validate_duration, validate_price
 
 
 class ServiceCreate(BaseModel):
     name: str
     description: str | None = None
-    default_price: Decimal
-    default_duration_minutes: int
+    price: Decimal
+    duration_minutes: int
 
-    @field_validator("default_duration_minutes")
+    @field_validator("duration_minutes")
     @classmethod
     def minimum_duration(cls, v: int) -> int:
         if v < 15:
             raise ValueError("A duração mínima é de 15 minutos")
         return v
 
-    @field_validator("default_price")
+    @field_validator("price")
     @classmethod
     def positive_price(cls, v: Decimal) -> Decimal:
         if v < 0:
@@ -40,19 +30,19 @@ class ServiceCreate(BaseModel):
 class ServiceUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
-    default_price: Decimal | None = None
-    default_duration_minutes: int | None = None
+    price: Decimal | None = None
+    duration_minutes: int | None = None
     is_active: bool | None = None
 
-    @field_validator("default_duration_minutes")
+    @field_validator("duration_minutes")
     @classmethod
     def minimum_duration(cls, v: int | None) -> int | None:
-        return _validate_duration(v)
+        return validate_duration(v)
 
-    @field_validator("default_price")
+    @field_validator("price")
     @classmethod
     def positive_price(cls, v: Decimal | None) -> Decimal | None:
-        return _validate_price(v)
+        return validate_price(v)
 
 
 class ServicePublic(BaseModel):
@@ -62,8 +52,8 @@ class ServicePublic(BaseModel):
     professional_id: str
     name: str
     description: str | None
-    default_price: Decimal
-    default_duration_minutes: int
+    price: Decimal
+    duration_minutes: int
     is_active: bool
     created_at: datetime
     updated_at: datetime

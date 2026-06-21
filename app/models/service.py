@@ -13,8 +13,8 @@ class Service(Base, ULIDMixin, TimestampMixin):
     professional_id: Mapped[str] = mapped_column(String(26), ForeignKey("professionals.id"))
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text)
-    default_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
-    default_duration_minutes: Mapped[int] = mapped_column(Integer)
+    price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    duration_minutes: Mapped[int] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     professional: Mapped[Professional] = relationship("Professional")

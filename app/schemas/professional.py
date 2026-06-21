@@ -1,8 +1,22 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 from app.schemas.store import StorePublic
+
+
+class ProfessionalCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    phone: str | None = None
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("A senha deve ter no mínimo 8 caracteres")
+        return v
 
 
 class ProfessionalSelfCreate(BaseModel):
@@ -21,6 +35,7 @@ class ProfessionalPublic(BaseModel):
 
     id: str
     user_id: str
+    store_id: str
     bio: str | None
     photo_url: str | None
     is_active: bool
@@ -33,23 +48,11 @@ class ProfessionalWithNamePublic(BaseModel):
 
     id: str
     user_id: str
+    store_id: str
     name: str
     bio: str | None
     photo_url: str | None
     is_active: bool
-    professional_store_id: str
-
-
-class ProfessionalStorePublic(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    professional_id: str
-    store_id: str
-    is_active: bool
-    store: StorePublic
-    created_at: datetime
-    updated_at: datetime
 
 
 class ProfessionalWithStorePublic(BaseModel):
@@ -57,10 +60,10 @@ class ProfessionalWithStorePublic(BaseModel):
 
     id: str
     user_id: str
+    store_id: str
     name: str
     bio: str | None
     photo_url: str | None
     is_active: bool
-    store_id: str
     store_name: str
-    professional_store_id: str
+    store: StorePublic

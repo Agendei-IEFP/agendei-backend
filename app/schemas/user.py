@@ -11,6 +11,11 @@ class UserUpdate(BaseModel):
     email: str | None = None
 
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class UserPublic(BaseModel):
     id: str
     name: str
@@ -18,5 +23,7 @@ class UserPublic(BaseModel):
     phone: str | None
     role: RoleEnum
     created_at: datetime
+    accepted_terms_at: datetime | None
+    accepted_terms_version: str | None
 
     model_config = ConfigDict(from_attributes=True)

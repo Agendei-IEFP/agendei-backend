@@ -4,7 +4,6 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.offering import Offering
 from app.models.service import Service
 from app.models.user import User
 from app.schemas.service import ServiceCreate, ServiceUpdate
@@ -35,8 +34,8 @@ async def create_service(db: AsyncSession, data: ServiceCreate, user: User) -> S
         professional_id=professional.id,
         name=data.name,
         description=data.description,
-        default_price=data.default_price,
-        default_duration_minutes=data.default_duration_minutes,
+        price=data.price,
+        duration_minutes=data.duration_minutes,
     )
     db.add(service)
     await db.commit()
@@ -57,7 +56,7 @@ async def list_my_services(db: AsyncSession, user: User) -> list[Service]:
 
 
 async def update_service(
-    db: AsyncSession, service_id: str, data: ServiceUpdate, user: User
+        db: AsyncSession, service_id: str, data: ServiceUpdate, user: User
 ) -> Service:
     service = await get_service(db, service_id)
     professional = await _get_professional_for_user(db, user)
@@ -80,17 +79,5 @@ async def delete_service(db: AsyncSession, service_id: str, user: User) -> None:
     if service.professional_id != professional.id:
         raise HTTPException(status_code=403, detail="Acesso negado")
 
-    now = datetime.now(timezone.utc)
-
-    # Cascade soft-delete to all offerings of this service
-    result = await db.execute(
-        select(Offering).where(
-            Offering.service_id == service_id,
-            Offering.deleted_at.is_(None),
-        )
-    )
-    for offering in result.scalars().all():
-        offering.deleted_at = now
-
-    service.deleted_at = now
+    service.deleted_at = datetime.now(timezone.utc)
     await db.commit()

@@ -5,22 +5,18 @@ from app.core.dependencies import require_role
 from app.db.session import get_db
 from app.models.user import RoleEnum, User
 from app.schemas.professional import (
+    ProfessionalCreate,
     ProfessionalPublic,
     ProfessionalSelfCreate,
-    ProfessionalStorePublic,
-    ProfessionalUpdate,
     ProfessionalWithNamePublic,
+    ProfessionalUpdate,
 )
 from app.services import professional_service
 
 router = APIRouter(prefix="/stores/{store_id}/professionals", tags=["professionals"])
 
-professional_links_router = APIRouter(
-    prefix="/stores/{store_id}/professional-links", tags=["professionals"]
-)
 
-
-@router.post("/me", response_model=ProfessionalStorePublic, status_code=status.HTTP_201_CREATED)
+@router.post("/me", response_model=ProfessionalPublic, status_code=status.HTTP_201_CREATED)
 async def add_admin_as_professional(
     store_id: str,
     data: ProfessionalSelfCreate,
@@ -28,6 +24,16 @@ async def add_admin_as_professional(
     admin: User = Depends(require_role(RoleEnum.store_admin)),
 ):
     return await professional_service.add_admin_as_professional(db, store_id, data, admin)
+
+
+@router.post("", response_model=ProfessionalWithNamePublic, status_code=status.HTTP_201_CREATED)
+async def create_professional(
+    store_id: str,
+    data: ProfessionalCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_role(RoleEnum.store_admin)),
+):
+    return await professional_service.create_professional(db, store_id, data, admin)
 
 
 @router.get("", response_model=list[ProfessionalWithNamePublic])
@@ -46,11 +52,11 @@ async def update_professional(
     return await professional_service.update_professional(db, store_id, professional_id, data, admin)
 
 
-@professional_links_router.delete("/{professional_store_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{professional_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_professional(
     store_id: str,
-    professional_store_id: str,
+    professional_id: str,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_role(RoleEnum.store_admin)),
 ):
-    await professional_service.unlink_professional_from_store(db, professional_store_id, admin)
+    await professional_service.unlink_professional_from_store(db, professional_id, store_id, admin)
