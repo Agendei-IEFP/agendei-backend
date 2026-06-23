@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
@@ -10,10 +11,13 @@ from app.schemas.user import PasswordChange, UserUpdate
 
 async def update_user(db: AsyncSession, user: User, data: UserUpdate) -> User:
     updates = data.model_dump(exclude_unset=True)
-    for field, value in updates.items():
-        setattr(user, field, value)
-    await db.commit()
-    await db.refresh(user)
+    try:
+        for field, value in updates.items():
+            setattr(user, field, value)
+        await db.commit()
+        await db.refresh(user)
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=400, detail="Email não disponível")
     return user
 
 

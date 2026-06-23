@@ -14,6 +14,18 @@ from app.schemas.professional import ProfessionalCreate, ProfessionalSelfCreate,
 from app.services.store_service import get_store
 
 
+async def get_user(db: AsyncSession, professional_id: str) -> User:
+    result = await db.execute(
+        select(User).where(
+            User.id == professional_id
+        )
+    )
+    professional = result.scalar_one_or_none()
+    if professional is None:
+        raise HTTPException(status_code=404, detail="Profissional não encontrado")
+    return professional
+
+
 async def get_professional(db: AsyncSession, professional_id: str) -> Professional:
     result = await db.execute(
         select(Professional).where(
@@ -199,6 +211,10 @@ async def unlink_professional_from_store(
         raise HTTPException(status_code=404, detail="Profissional não encontrado nesta loja")
 
     professional.deleted_at = datetime.now(timezone.utc)
+
+    user = await get_user(db, professional.user_id)
+    user.role = RoleEnum.client
+
     await db.commit()
 
 
