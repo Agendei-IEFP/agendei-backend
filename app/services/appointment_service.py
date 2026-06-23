@@ -77,8 +77,8 @@ async def list_available_slots(
     now = datetime.now(timezone.utc)
     slots: list[AvailableSlot] = []
 
-    cursor = datetime.combine(query_date, block.start_time).replace(tzinfo=timezone.utc)
-    block_end = datetime.combine(query_date, block.end_time).replace(tzinfo=timezone.utc)
+    cursor = datetime.combine(query_date, block.start_time).astimezone(timezone.utc)
+    block_end = datetime.combine(query_date, block.end_time).astimezone(timezone.utc)
 
     while cursor + duration <= block_end:
         slot_start = cursor

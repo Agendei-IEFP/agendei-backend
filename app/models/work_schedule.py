@@ -15,8 +15,8 @@ class WorkSchedule(Base, ULIDMixin):
         String(26), ForeignKey("professionals.id")
     )
     weekday: Mapped[int] = mapped_column(Integer)  # 0=Monday ... 6=Sunday
-    start_time: Mapped[time] = mapped_column(Time)
-    end_time: Mapped[time] = mapped_column(Time)
+    start_time: Mapped[time] = mapped_column(Time(timezone=True))
+    end_time: Mapped[time] = mapped_column(Time(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     professional: Mapped[Professional] = relationship("Professional")
