@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
 from app.schemas.store import StorePublic
 
@@ -54,6 +54,21 @@ class ProfessionalWithNamePublic(BaseModel):
     photo_url: str | None
     is_active: bool
 
+    @model_validator(mode="before")
+    @classmethod
+    def extract_user_name(cls, data):
+        if isinstance(data, dict):
+            return data
+        return {
+            "id": data.id,
+            "user_id": data.user_id,
+            "store_id": data.store_id,
+            "name": data.user.name,
+            "bio": data.bio,
+            "photo_url": data.photo_url,
+            "is_active": data.is_active,
+        }
+
 
 class ProfessionalWithStorePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -67,3 +82,20 @@ class ProfessionalWithStorePublic(BaseModel):
     is_active: bool
     store_name: str
     store: StorePublic
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_nested(cls, data):
+        if isinstance(data, dict):
+            return data
+        return {
+            "id": data.id,
+            "user_id": data.user_id,
+            "store_id": data.store_id,
+            "name": data.user.name,
+            "bio": data.bio,
+            "photo_url": data.photo_url,
+            "is_active": data.is_active,
+            "store_name": data.store.name,
+            "store": data.store,
+        }

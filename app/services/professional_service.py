@@ -119,15 +119,7 @@ async def create_professional(
     )
     professional = result.scalar_one()
 
-    return ProfessionalWithNamePublic(
-        id=professional.id,
-        user_id=professional.user_id,
-        store_id=professional.store_id,
-        name=professional.user.name,
-        bio=professional.bio,
-        photo_url=professional.photo_url,
-        is_active=professional.is_active,
-    )
+    return ProfessionalWithNamePublic.model_validate(professional)
 
 
 async def list_store_professionals(
@@ -158,18 +150,7 @@ async def list_store_professionals_with_name(
         )
     )
     professionals = result.scalars().all()
-    return [
-        ProfessionalWithNamePublic(
-            id=p.id,
-            user_id=p.user_id,
-            store_id=p.store_id,
-            name=p.user.name,
-            bio=p.bio,
-            photo_url=p.photo_url,
-            is_active=p.is_active,
-        )
-        for p in professionals
-    ]
+    return [ProfessionalWithNamePublic.model_validate(p) for p in professionals]
 
 
 async def update_professional(
@@ -218,9 +199,9 @@ async def unlink_professional_from_store(
     await db.commit()
 
 
-async def list_my_professional_stores(
+async def get_my_store_professional(
         db: AsyncSession, user: User
-) -> list[Professional]:
+) -> Professional:
     result = await db.execute(
         select(Professional)
         .options(selectinload(Professional.store), selectinload(Professional.user))
@@ -229,7 +210,10 @@ async def list_my_professional_stores(
             Professional.deleted_at.is_(None),
         )
     )
-    return list(result.scalars().all())
+    professional = result.scalar_one_or_none()
+    if professional is None:
+        raise HTTPException(status_code=404, detail="Perfil de profissional não encontrado")
+    return professional
 
 
 async def get_my_profile(db: AsyncSession, user: User) -> Professional:
