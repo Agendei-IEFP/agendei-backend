@@ -27,13 +27,6 @@ async def list_available_slots(
         service_id: str,
         query_date: date,
 ) -> list[AvailableSlot]:
-    """
-    Returns all free slots for a professional on a given day.
-
-    1. Fetch the active WorkSchedule block for that professional+weekday.
-    2. Fetch confirmed appointments for that professional on the day.
-    3. Walk a 10-minute grid; offer slots where the service fits without collision.
-    """
     SLOT_GRID_MINUTES = 10
 
     professional = await get_professional(db, professional_id)
