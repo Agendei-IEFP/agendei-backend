@@ -18,13 +18,6 @@ class WorkScheduleEntry(BaseModel):
             raise ValueError("weekday deve ser entre 0 (segunda) e 6 (domingo)")
         return v
 
-    @field_validator("start_time", "end_time", mode="after")
-    @classmethod
-    def must_have_timezone(cls, v: time) -> time:
-        if v.tzinfo is None:
-            raise ValueError("O horário deve incluir o offset de timezone (ex: 19:00:00+01:00)")
-        return v
-
     @model_validator(mode="after")
     def consistent_schedule(self) -> "WorkScheduleEntry":
         if self.is_active and self.end_time <= self.start_time:

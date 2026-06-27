@@ -1,4 +1,7 @@
 from datetime import datetime, date, timedelta, timezone, time
+from zoneinfo import ZoneInfo
+
+_LISBON = ZoneInfo("Europe/Lisbon")
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -70,8 +73,8 @@ async def list_available_slots(
     now = datetime.now(timezone.utc)
     slots: list[AvailableSlot] = []
 
-    cursor = datetime.combine(query_date, block.start_time).astimezone(timezone.utc)
-    block_end = datetime.combine(query_date, block.end_time).astimezone(timezone.utc)
+    cursor = datetime.combine(query_date, block.start_time, tzinfo=_LISBON)
+    block_end = datetime.combine(query_date, block.end_time, tzinfo=_LISBON)
 
     while cursor + duration <= block_end:
         slot_start = cursor
