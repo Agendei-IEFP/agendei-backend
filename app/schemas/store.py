@@ -23,6 +23,7 @@ class StoreCreate(BaseModel):
     email: str | None = None
     address: str | None = None
     logo_url: str | None = None
+    banner_url: str | None = None
     store_types: list[StoreType] = []
 
     @field_validator("store_types")
@@ -38,6 +39,7 @@ class StoreUpdate(BaseModel):
     email: str | None = None
     address: str | None = None
     logo_url: str | None = None
+    banner_url: str | None = None
     store_types: list[StoreType] | None = None
     is_active: bool | None = None
 
@@ -56,6 +58,7 @@ class StorePublic(BaseModel):
     email: str | None
     address: str | None
     logo_url: str | None
+    banner_url: str | None
     is_active: bool
     store_types: list[StoreType]
     created_at: datetime

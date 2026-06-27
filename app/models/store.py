@@ -27,6 +27,7 @@ class Store(Base, ULIDMixin, TimestampMixin):
     email: Mapped[str | None] = mapped_column(String(255))
     address: Mapped[str | None] = mapped_column(String(255))
     logo_url: Mapped[str | None] = mapped_column(String(500))
+    banner_url: Mapped[str | None] = mapped_column(String(500))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     store_types = Column(
         ARRAY(Enum(StoreType, name="storetype")),
